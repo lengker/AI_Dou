@@ -1,6 +1,17 @@
 export type Screen = 'mapping' | 'room' | 'arcade';
 
 export type RoomId = 'room_working' | 'room_living' | 'outdoor_forest';
+export type FeatureUnlock = 'collection' | 'arcade' | 'coin' | 'claw';
+export type MainlineStep = 'intro' | 'bedroom' | 'forest' | 'atlas' | 'arcade' | 'claw' | 'free';
+export type HintKey =
+  | 'pet'
+  | 'tab_living'
+  | 'tab_forest'
+  | 'collection'
+  | 'forest_interact'
+  | 'arcade_entry'
+  | 'arcade_coin'
+  | 'arcade_claw';
 
 export type PetState = 'S1' | 'S2' | 'S3' | 'S4' | 'S5';
 
@@ -50,7 +61,7 @@ export interface HotZone {
   w: number;
   h: number;
   room: RoomId;
-  disabledInMidnight?: boolean;
+  disabledInNightDebug?: boolean;
   decorative?: boolean;
   decorativeMessage?: string;
 }
@@ -80,6 +91,14 @@ export interface DailyStats {
   easterEggTriggered: boolean;
 }
 
+export interface StoryDialog {
+  id: string;
+  speaker: string;
+  title: string;
+  body: string;
+  hint?: string;
+}
+
 export interface GameState {
   hasCompletedMapping: boolean;
   profile: AvatarProfile | null;
@@ -107,4 +126,18 @@ export interface GameState {
   tutorialActive: boolean;
   tutorialStep: number;
   showWelcomeModal: boolean;
+  energy: number;
+  maxEnergy: number;
+  mood: number;
+  maxMood: number;
+  discoveredZones: string[];
+  unlockedRooms: RoomId[];
+  unlockedFeatures: FeatureUnlock[];
+  mainlineStep: MainlineStep;
+  storyDialog: StoryDialog | null;
+  forestAnimals: string[];
+  onboardingActive: boolean;
+  onboardingStep: number;
+  activeHint: HintKey | null;
+  completedHints: HintKey[];
 }

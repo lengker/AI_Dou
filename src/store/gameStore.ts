@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { A_CLASS, B_CLASS, COLLECTIBLES } from '@/data/collectibles';
+import { FOREST_ANIMALS, FOREST_ANIMAL_BY_ZONE } from '@/data/forestAnimals';
 import { getFurniture, getFurnitureByHotZoneId } from '@/data/furniture';
+import { HOT_ZONES } from '@/data/hotzones';
 import { TUTORIAL_STEPS } from '@/data/tutorial';
 import {
   CYBER_PREFIXES, EASTER_EGG_TITLES, POSITIVE_PREFIXES,
@@ -11,11 +13,14 @@ import { pickTrashCollectible, calculateOfflineSettlement } from '@/utils/offlin
 import { isMidnightMode, isWeekend, randomPick, todayKey } from '@/utils/time';
 import type {
   AvatarAppearance, AvatarProfile, GameState, OfflineResult,
-  PetState, RoomId, TempBuff,
+  FeatureUnlock, HintKey, MainlineStep, PetState, RoomId, StoryDialog, TempBuff,
 } from '@/types';
 
 const STORAGE_KEY = 'room404-save';
 const LAST_OPEN_KEY = 'room404-last-open';
+const MAX_ENERGY = 6;
+const MAX_MOOD = 5;
+const DEFAULT_MOOD = 3;
 
 interface GameActions {
   initApp: () => void;
@@ -43,10 +48,18 @@ interface GameActions {
   skipTutorial: () => void;
   dismissWelcomeModal: () => void;
   beginTutorialFromWelcome: () => void;
+  dismissStoryDialog: () => void;
+  recordArcadePlay: (mode: 'coin' | 'claw') => void;
+  unlockForestAnimal: (zoneId: string) => { success: boolean; reward: number; alreadyUnlocked: boolean };
+  startOnboarding: () => void;
+  advanceOnboarding: () => void;
+  dismissOnboarding: () => void;
+  completeHint: (key: HintKey) => void;
+  dismissActiveHint: () => void;
 }
 
 export interface HotZoneResult {
-  type: 'computer' | 'bed' | 'fridge' | 'trash' | 'arcade' | 'furniture_unlock' | 'furniture_view' | 'desktop_bubble' | 'decorative';
+  type: 'computer' | 'bed' | 'fridge' | 'trash' | 'arcade' | 'furniture_unlock' | 'furniture_view' | 'desktop_bubble' | 'decorative' | 'forest_event';
   payload?: Record<string, unknown>;
 }
 
@@ -60,6 +73,83 @@ const FOREST_FURNITURE_TITLES: Record<string, string> = {
   F07: '铃兰萤光特写',
   F08: '林间神龛特写',
 };
+
+const MAINLINE_DIALOGS: Record<Exclude<MainlineStep, 'intro'>, StoryDialog> = {
+  bedroom: {
+    id: 'unlock-bedroom',
+    speaker: '赛博分身',
+    title: '卧室已接通',
+    body: '这间房终于不像临时缓存了。只要能吃饭、能睡觉，我就能继续稳定运行下去。',
+    hint: '已解锁「生活区」',
+  },
+  forest: {
+    id: 'unlock-forest',
+    speaker: '旁白',
+    title: '数据林海开放',
+    body: '休息模块完成后，你为分身接上了第一片自然场景。它终于可以离开房间，去整理这个世界的生命数据。',
+    hint: '已解锁「数据林海」，户外探索会消耗体力',
+  },
+  atlas: {
+    id: 'unlock-atlas',
+    speaker: '赛博分身',
+    title: '图鉴开始记录',
+    body: '原来收集不是囤积杂物，而是在给这个世界补全名字。被记录下来的东西，就不算白白消失。',
+    hint: '已解锁「图鉴 / 收藏柜」',
+  },
+  arcade: {
+    id: 'unlock-arcade',
+    speaker: '旁白',
+    title: '娱乐模块上线',
+    body: '分身已经学会探索和记录，接下来它需要一点快乐。游戏机重新亮起，赛博世界开始有了日常温度。',
+    hint: '已解锁「游戏机 / 推币机」',
+  },
+  claw: {
+    id: 'unlock-claw',
+    speaker: '赛博分身',
+    title: '抓娃娃机开放',
+    body: '推币机很好，但我还想试试更轻松的快乐。让我看看，运气这种东西能不能也被调参。',
+    hint: '已解锁「抓娃娃机」',
+  },
+  free: {
+    id: 'mainline-free',
+    speaker: '旁白',
+    title: '世界开始完整',
+    body: '休息、探索、收集、娱乐都已接通。赛博分身不再只是被唤醒的程序，而是在这里真正生活了起来。',
+    hint: '当前阶段：自由培育赛博分身，继续完善世界',
+  },
+};
+
+const ROOM_PROGRESS_ZONES: Record<RoomId, string[]> = {
+  room_working: HOT_ZONES.filter((zone) => zone.room === 'room_working' && !zone.decorative).map((zone) => zone.id),
+  room_living: HOT_ZONES.filter((zone) => zone.room === 'room_living' && !zone.decorative).map((zone) => zone.id),
+  outdoor_forest: HOT_ZONES.filter((zone) => zone.room === 'outdoor_forest').map((zone) => zone.id),
+};
+
+const ACTIVE_PET_STATES: PetState[] = ['S1', 'S2', 'S4'];
+
+function addUnique<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list : [...list, value];
+}
+
+function hasFeature(list: FeatureUnlock[], feature: FeatureUnlock): boolean {
+  return list.includes(feature);
+}
+
+function addHint(list: HintKey[], value: HintKey): HintKey[] {
+  return list.includes(value) ? list : [...list, value];
+}
+
+function getNextActiveHint(completedHints: HintKey[], key: HintKey): HintKey | null {
+  return completedHints.includes(key) ? null : key;
+}
+
+function getForestProgressCount(discoveredZones: string[]): number {
+  return ROOM_PROGRESS_ZONES.outdoor_forest.filter((id) => discoveredZones.includes(id)).length;
+}
+
+function isForcedSleepActive(tempBuff: GameState['tempBuff']): boolean {
+  return !!tempBuff.forcedSleep && Date.now() < tempBuff.forcedSleep.expiresAt;
+}
 
 function ensureDaily(daily: GameState['daily']): GameState['daily'] {
   const today = todayKey();
@@ -109,6 +199,14 @@ const initialState: GameState = {
   tempBuff: {}, pendingOffline: null, showRandomEvent: null, computerSessionEnd: null,
   screen: 'mapping', returnRoom: null,
   tutorialCompleted: false, tutorialActive: false, tutorialStep: 0, showWelcomeModal: false,
+  energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
+  discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
+  mainlineStep: 'intro', storyDialog: null,
+  forestAnimals: [],
+  onboardingActive: false,
+  onboardingStep: 0,
+  activeHint: null,
+  completedHints: [],
 };
 
 export const useGameStore = create<GameState & GameActions>()(
@@ -121,6 +219,11 @@ export const useGameStore = create<GameState & GameActions>()(
         const daily = ensureDaily(state.daily);
         const now = Date.now();
         const lastOpenAt = Number(localStorage.getItem(LAST_OPEN_KEY) || 0) || null;
+        const progressedSave = (state.discoveredZones?.length ?? 0) > 0
+          || (state.completedHints?.length ?? 0) > 0
+          || (state.unlockedRooms?.length ?? 1) > 1
+          || (state.collectibles?.length ?? 0) > 0
+          || state.mainlineStep !== 'intro';
 
         if (!state.hasCompletedMapping) {
           set({ screen: 'mapping', daily });
@@ -143,10 +246,32 @@ export const useGameStore = create<GameState & GameActions>()(
           }
         }
 
-        const updates: Partial<GameState> = { daily, screen: 'room', pendingOffline };
+        const updates: Partial<GameState> = {
+          daily,
+          screen: 'room',
+          pendingOffline,
+          energy: state.energy ?? MAX_ENERGY,
+          maxEnergy: state.maxEnergy ?? MAX_ENERGY,
+          mood: state.mood ?? DEFAULT_MOOD,
+          maxMood: state.maxMood ?? MAX_MOOD,
+          discoveredZones: state.discoveredZones ?? [],
+          forestAnimals: state.forestAnimals ?? [],
+          unlockedRooms: state.unlockedRooms,
+          unlockedFeatures: state.unlockedFeatures,
+          mainlineStep: state.mainlineStep,
+          storyDialog: state.storyDialog ?? null,
+          tutorialActive: progressedSave ? false : (state.tutorialActive ?? false),
+          tutorialStep: progressedSave ? 0 : (state.tutorialStep ?? 0),
+          showWelcomeModal: progressedSave ? false : (state.showWelcomeModal ?? false),
+          onboardingActive: progressedSave ? false : (state.onboardingActive ?? false),
+          onboardingStep: progressedSave ? 0 : (state.onboardingStep ?? 0),
+          activeHint: state.activeHint ?? null,
+          completedHints: state.completedHints ?? [],
+        };
         if (pendingOffline?.missyState) { updates.missyState = true; updates.petState = 'S3'; }
+        else if (isForcedSleepActive(state.tempBuff ?? {})) updates.petState = 'S3';
         else if (isMidnightMode()) updates.petState = 'S3';
-        else updates.petState = randomPick<PetState>(['S1', 'S2', 'S3', 'S4']);
+        else updates.petState = randomPick(ACTIVE_PET_STATES);
 
         if (pendingOffline && pendingOffline.tier !== 'anomaly' && pendingOffline.tier !== null) {
           let shards = state.shards + pendingOffline.shards;
@@ -176,29 +301,66 @@ export const useGameStore = create<GameState & GameActions>()(
         achievements = checkCollectibleAchievements(collectibles, achievements);
         set({
           hasCompletedMapping: true, profile, collectibles, achievements, screen: 'room',
-          petState: randomPick<PetState>(['S1', 'S2', 'S3', 'S4']),
+          petState: randomPick(ACTIVE_PET_STATES),
           showWelcomeModal: true, tutorialActive: false, tutorialStep: 0,
+          currentRoom: 'room_working',
+          energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
+          discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
+          mainlineStep: 'intro', storyDialog: null, forestAnimals: [],
+          onboardingActive: false, onboardingStep: 0, activeHint: null, completedHints: [],
         });
       },
 
       setScreen: (screen) => set({ screen }),
-      switchRoom: (room) => set({ currentRoom: room }),
+      switchRoom: (room) => {
+        if (!get().unlockedRooms.includes(room)) return;
+        const state = get();
+        const completedHints = room === 'room_living'
+          ? addHint(state.completedHints, 'tab_living')
+          : room === 'outdoor_forest'
+            ? addHint(state.completedHints, 'tab_forest')
+            : state.completedHints;
+        set({
+          currentRoom: room,
+          completedHints,
+          activeHint: state.activeHint === 'tab_living' || state.activeHint === 'tab_forest' ? null : state.activeHint,
+        });
+      },
       setPetState: (petState) => set({ petState }),
 
       tickPetState: () => {
         const s = get();
         if (s.missyState || isMidnightMode()) return;
         if (s.tempBuff.forcedSleep && Date.now() < s.tempBuff.forcedSleep.expiresAt) return;
-        set({ petState: randomPick<PetState>(['S1', 'S2', 'S3', 'S4']) });
+        set({ petState: randomPick(ACTIVE_PET_STATES) });
       },
 
       clearPendingOffline: () => set({ pendingOffline: null }),
       addShards: (amount) => set({ shards: get().shards + amount }),
 
       addCollectible: (id) => {
-        if (get().collectibles.includes(id)) return;
-        const collectibles = maybeGrantC015([...get().collectibles, id]);
-        set({ collectibles, achievements: checkCollectibleAchievements(collectibles, get().achievements) });
+        const state = get();
+        if (state.collectibles.includes(id)) return;
+        const collectibles = maybeGrantC015([...state.collectibles, id]);
+        const achievements = checkCollectibleAchievements(collectibles, state.achievements);
+        let unlockedFeatures = state.unlockedFeatures;
+        let mainlineStep = state.mainlineStep;
+        let storyDialog = state.storyDialog;
+
+        if (!hasFeature(unlockedFeatures, 'collection')) {
+          unlockedFeatures = addUnique(unlockedFeatures, 'collection');
+          if (mainlineStep === 'forest') mainlineStep = 'atlas';
+          storyDialog = MAINLINE_DIALOGS.atlas;
+        }
+
+        set({
+          collectibles,
+          achievements,
+          unlockedFeatures,
+          mainlineStep,
+          storyDialog,
+          activeHint: !state.completedHints.includes('collection') ? 'collection' : state.activeHint,
+        });
       },
 
       unlockAchievement: (id) => {
@@ -215,17 +377,86 @@ export const useGameStore = create<GameState & GameActions>()(
       handleHotZone: (zoneId) => {
         const s = get();
         const daily = ensureDaily(s.daily);
+        const zone = HOT_ZONES.find((item) => item.id === zoneId);
+        if (!zone) return null;
+
+        if (zone.room === 'outdoor_forest') {
+          if (s.energy <= 0) {
+            return { type: 'desktop_bubble', payload: { message: '体力耗尽了，先回卧室吃饭或睡觉恢复，再继续外出探索。', zoneId } };
+          }
+          return {
+            type: 'forest_event',
+            payload: {
+              zoneId,
+              unlocked: s.forestAnimals.includes(zoneId),
+              animalId: FOREST_ANIMAL_BY_ZONE[zoneId]?.id,
+            },
+          };
+        }
+
+        if ((zoneId === 'L05' || zoneId === 'F05') && !hasFeature(s.unlockedFeatures, 'arcade')) {
+          return { type: 'desktop_bubble', payload: { message: '娱乐模块还在校准中，先继续完善分身的生活环境吧。' } };
+        }
+
+        let shards = s.shards;
+        let energy = s.energy;
+        let unlockedRooms = s.unlockedRooms;
+        let unlockedFeatures = s.unlockedFeatures;
+        let mainlineStep = s.mainlineStep;
+        let storyDialog = s.storyDialog;
+        let discoveredZones = s.discoveredZones;
+        let activeHint = s.activeHint;
+
+        if (!zone.decorative && !discoveredZones.includes(zoneId)) {
+          discoveredZones = [...discoveredZones, zoneId];
+          shards += 1;
+        }
+
+        if (zone.room === 'room_working' && mainlineStep === 'intro') {
+          unlockedRooms = addUnique(unlockedRooms, 'room_living');
+          mainlineStep = 'bedroom';
+          storyDialog = MAINLINE_DIALOGS.bedroom;
+          activeHint = getNextActiveHint(s.completedHints, 'tab_living');
+        }
+
+        const commitProgress = (extra: Partial<GameState> = {}) => {
+          set({
+            shards,
+            energy,
+            unlockedRooms,
+            unlockedFeatures,
+            mainlineStep,
+            storyDialog,
+            discoveredZones,
+            activeHint,
+            ...extra,
+          });
+        };
 
         if (zoneId === 'W01' || zoneId === 'W02' || zoneId === 'F01') {
-          set({ petState: 'S2', computerSessionEnd: Date.now() + 10000 });
-          return { type: 'computer', payload: { zoneId, midnight: isMidnightMode() } };
+          commitProgress({ petState: 'S2', computerSessionEnd: Date.now() + 10000, daily });
+          return { type: 'computer', payload: { zoneId, nightDebug: isMidnightMode() } };
         }
         if (zoneId === 'L01' || zoneId === 'F02') {
           if (s.missyState) return null;
-          set({ petState: 'S3', tempBuff: { forcedSleep: { expiresAt: Date.now() + 5 * 60 * 1000 } } });
+          energy = s.maxEnergy;
+          if (zone.room === 'room_living' && mainlineStep === 'bedroom') {
+            unlockedRooms = addUnique(unlockedRooms, 'outdoor_forest');
+            mainlineStep = 'forest';
+            storyDialog = MAINLINE_DIALOGS.forest;
+            activeHint = getNextActiveHint(s.completedHints, 'tab_forest');
+          }
+          commitProgress({ petState: 'S3', tempBuff: { forcedSleep: { expiresAt: Date.now() + 5 * 60 * 1000 } }, daily });
           return { type: 'bed', payload: { zoneId } };
         }
         if (zoneId === 'L04' || zoneId === 'F03') {
+          if (zone.room === 'room_living' && mainlineStep === 'bedroom') {
+            unlockedRooms = addUnique(unlockedRooms, 'outdoor_forest');
+            mainlineStep = 'forest';
+            storyDialog = MAINLINE_DIALOGS.forest;
+            activeHint = getNextActiveHint(s.completedHints, 'tab_forest');
+          }
+          if (zone.room === 'room_living') energy = Math.min(s.maxEnergy, energy + 2);
           const weekend = isWeekend();
           const roll = Math.random() * 100;
           let result: 'cola' | 'expired' | 'empty';
@@ -241,24 +472,25 @@ export const useGameStore = create<GameState & GameActions>()(
             }
           } else if (result === 'expired') {
             buff.glitch = { expiresAt: Date.now() + 3000 };
-            set({ petState: 'S5' });
+            commitProgress({ petState: 'S5', tempBuff: buff, daily });
             setTimeout(() => { if (get().petState === 'S5') get().setPetState('S1'); }, 3000);
+            return { type: 'fridge', payload: { result, zoneId } };
           }
-          set({ tempBuff: buff, daily });
+          commitProgress({ tempBuff: buff, daily });
           return { type: 'fridge', payload: { result, zoneId } };
         }
         if (zoneId === 'L05' || zoneId === 'F05') {
-          set({ screen: 'arcade', returnRoom: s.currentRoom });
+          commitProgress({ screen: 'arcade', returnRoom: s.currentRoom, daily });
           return { type: 'arcade' };
         }
         if (zoneId === 'L06' || zoneId === 'F04') {
           if (daily.trashSearchCount >= 3) return { type: 'trash', payload: { limit: true, message: '今日翻找次数已达上限。' } };
           daily.trashSearchCount += 1;
-          set({ daily });
+          commitProgress({ daily });
           const unownedA = A_CLASS.filter((id) => !s.collectibles.includes(id));
           if (unownedA.length === 0) return { type: 'trash', payload: { empty: true, message: '只剩电子灰尘了。' } };
           if (Math.random() < 0.2) {
-            set({ petState: 'S5' });
+            commitProgress({ petState: 'S5', daily });
             setTimeout(() => { if (get().petState === 'S5') get().setPetState('S1'); }, 3000);
             return { type: 'trash', payload: { miss: true } };
           }
@@ -266,13 +498,18 @@ export const useGameStore = create<GameState & GameActions>()(
           get().addCollectible(found);
           return { type: 'trash', payload: { collectibleId: found, zoneId } };
         }
-        if (zoneId === 'W04') return { type: 'desktop_bubble', payload: { message: '这里暂时什么都没有。' } };
+        if (zoneId === 'W04') {
+          commitProgress({ daily });
+          return { type: 'desktop_bubble', payload: { message: '这里暂时什么都没有。' } };
+        }
 
         const furniture = getFurnitureByHotZoneId(zoneId);
         if (furniture) {
           if (!s.furniture.includes(furniture.id)) {
+            commitProgress({ daily });
             return { type: 'furniture_unlock', payload: { furnitureId: furniture.id, cost: furniture.cost, name: furniture.name } };
           }
+          commitProgress({ daily });
           return {
             type: 'furniture_view',
             payload: {
@@ -283,6 +520,7 @@ export const useGameStore = create<GameState & GameActions>()(
             },
           };
         }
+        commitProgress({ daily });
         return null;
       },
 
@@ -290,7 +528,9 @@ export const useGameStore = create<GameState & GameActions>()(
         const s = get();
         const now = Date.now();
         const daily = ensureDaily(s.daily);
-        if (isMidnightMode() && s.petState === 'S3' && !s.missyState) return { type: 'wake_confirm' };
+        if ((isForcedSleepActive(s.tempBuff) || isMidnightMode()) && s.petState === 'S3' && !s.missyState) {
+          return { type: 'wake_confirm' };
+        }
         if (s.missyState) {
           if (now - s.lastMissyClickAt > 2000) { set({ missyClicks: 1, lastMissyClickAt: now }); return { type: 'missy_progress' }; }
           const clicks = s.missyClicks + 1;
@@ -314,7 +554,11 @@ export const useGameStore = create<GameState & GameActions>()(
         return null;
       },
 
-      confirmWake: () => set({ petState: 'S1' }),
+      confirmWake: () => {
+        const { forcedSleep, ...restBuff } = get().tempBuff;
+        void forcedSleep;
+        set({ petState: 'S1', tempBuff: restBuff });
+      },
       dismissRandomEvent: () => set({ showRandomEvent: null }),
 
       setRandomEventMessage: (message) => {
@@ -350,8 +594,104 @@ export const useGameStore = create<GameState & GameActions>()(
       },
 
       skipTutorial: () => set({ tutorialActive: false, tutorialCompleted: true, tutorialStep: 0, showWelcomeModal: false }),
-      dismissWelcomeModal: () => set({ showWelcomeModal: false }),
-      beginTutorialFromWelcome: () => set({ showWelcomeModal: false, tutorialActive: true, tutorialStep: 0 }),
+      dismissWelcomeModal: () => set({ showWelcomeModal: false, onboardingActive: true, onboardingStep: 0 }),
+      beginTutorialFromWelcome: () => set({ showWelcomeModal: false, onboardingActive: true, onboardingStep: 0 }),
+      dismissStoryDialog: () => set({ storyDialog: null }),
+      recordArcadePlay: (mode) => {
+        const state = get();
+        let unlockedFeatures = state.unlockedFeatures;
+        let mainlineStep = state.mainlineStep;
+        let storyDialog = state.storyDialog;
+        let activeHint = state.activeHint;
+        let completedHints = state.completedHints;
+
+        if (mode === 'coin' && !hasFeature(unlockedFeatures, 'claw')) {
+          unlockedFeatures = addUnique(unlockedFeatures, 'claw');
+          if (mainlineStep === 'arcade') mainlineStep = 'claw';
+          storyDialog = MAINLINE_DIALOGS.claw;
+          activeHint = getNextActiveHint(completedHints, 'arcade_claw');
+        } else if (mode === 'claw' && mainlineStep === 'claw') {
+          mainlineStep = 'free';
+          storyDialog = MAINLINE_DIALOGS.free;
+        }
+
+        completedHints = addHint(completedHints, mode === 'coin' ? 'arcade_coin' : 'arcade_claw');
+        if (mode === 'coin' && activeHint === 'arcade_coin') activeHint = null;
+        if (mode === 'claw' && activeHint === 'arcade_claw') activeHint = null;
+
+        set({
+          mood: Math.min(state.maxMood, state.mood + 1),
+          unlockedFeatures,
+          mainlineStep,
+          storyDialog,
+          completedHints,
+          activeHint,
+        });
+      },
+      unlockForestAnimal: (zoneId) => {
+        const state = get();
+        const animal = FOREST_ANIMAL_BY_ZONE[zoneId];
+        if (!animal) return { success: false, reward: 0, alreadyUnlocked: false };
+        if (state.forestAnimals.includes(zoneId)) return { success: true, reward: 0, alreadyUnlocked: true };
+
+        const forestAnimals = [...state.forestAnimals, zoneId];
+        const discoveredZones = addUnique(state.discoveredZones, zoneId);
+        let unlockedFeatures = state.unlockedFeatures;
+        let mainlineStep = state.mainlineStep;
+        let storyDialog = state.storyDialog;
+        let activeHint = state.activeHint;
+        const completedHints = addHint(state.completedHints, 'forest_interact');
+
+        if (!hasFeature(unlockedFeatures, 'collection')) {
+          unlockedFeatures = addUnique(unlockedFeatures, 'collection');
+          if (mainlineStep === 'forest') mainlineStep = 'atlas';
+          storyDialog = MAINLINE_DIALOGS.atlas;
+          activeHint = getNextActiveHint(completedHints, 'collection');
+        }
+
+        if (forestAnimals.length >= 3 && !hasFeature(unlockedFeatures, 'arcade')) {
+          unlockedFeatures = addUnique(addUnique(unlockedFeatures, 'arcade'), 'coin');
+          if (mainlineStep === 'forest' || mainlineStep === 'atlas') mainlineStep = 'arcade';
+          storyDialog = MAINLINE_DIALOGS.arcade;
+          activeHint = getNextActiveHint(completedHints, 'arcade_entry');
+        }
+
+        set({
+          forestAnimals,
+          discoveredZones,
+          energy: Math.max(0, state.energy - 1),
+          mood: Math.min(state.maxMood, state.mood + 1),
+          shards: state.shards + animal.rewardShards,
+          unlockedFeatures,
+          mainlineStep,
+          storyDialog,
+          completedHints,
+          activeHint: state.activeHint === 'forest_interact' ? null : activeHint,
+        });
+        return { success: true, reward: animal.rewardShards, alreadyUnlocked: false };
+      },
+      startOnboarding: () => set({ onboardingActive: true, onboardingStep: 0 }),
+      advanceOnboarding: () => {
+        const state = get();
+        if (state.onboardingStep >= 3) {
+          set({
+            onboardingActive: false,
+            onboardingStep: 0,
+            activeHint: getNextActiveHint(state.completedHints, 'pet') ?? state.activeHint,
+          });
+          return;
+        }
+        set({ onboardingStep: state.onboardingStep + 1 });
+      },
+      dismissOnboarding: () => set({ onboardingActive: false, onboardingStep: 0 }),
+      completeHint: (key) => {
+        const state = get();
+        set({
+          completedHints: addHint(state.completedHints, key),
+          activeHint: state.activeHint === key ? null : state.activeHint,
+        });
+      },
+      dismissActiveHint: () => set({ activeHint: null }),
     }),
     { name: STORAGE_KEY },
   ),

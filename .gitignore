@@ -6,6 +6,7 @@ dist/
 *.log
 .env
 .env.*
+.dbg/
 
 # public/DOU 是本地 junction，克隆后运行 npm run setup 创建
 public/DOU

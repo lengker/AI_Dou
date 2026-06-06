@@ -17,10 +17,10 @@ export interface TutorialStep {
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome', title: '欢迎来到 404 号房间', body: '这里是你的数字分身常住的小房间。你可以观察 TA 的日常、点击场景里的物品互动、收集赛博藏品，慢慢把空房间装点成自己的风格。', tip: '这是一份探索指引，帮你快速弄清「能点哪里、点了会怎样」。', target: 'none', room: 'room_working' },
-  { id: 'pet', title: '你的数字分身', body: '地板上的像素小人就是你的分身。TA 会自己待机、敲键盘、睡觉或在房间里溜达。点击 TA 可以触发隐藏互动。', tip: '离开越久再回来，TA 说的话和状态可能不一样。', target: 'pet', room: 'room_working' },
+  { id: 'pet', title: '你的数字分身', body: '地板上的像素小人就是你的分身。TA 会自己待机、敲键盘或在房间里活动；只有你主动让 TA 休息时，才会进入明确的睡眠状态。点击 TA 可以触发隐藏互动。', tip: '离开越久再回来，TA 说的话和状态可能不一样。', target: 'pet', room: 'room_working' },
   { id: 'shards', title: '数据碎片', body: '右上角金色硬币是「数据碎片」——房间里的通用货币。离线回归、翻找垃圾桶、未来小游戏等途径都能获得。', tip: '碎片用来解锁家具装饰，或在设置里消耗 30 个重构分身形象。', target: 'shards', room: 'room_working' },
   { id: 'tabs', title: '多个场景区域', body: '现在可以在「办公区」「生活区」和新增的「数据林海」之间切换。底部 Tab 会带你去不同背景，交互物品也分散在不同区域。', tip: '切换场景不会丢失小人状态或已有进度。', target: 'tabs', room: 'room_working' },
-  { id: 'computer', title: '办公区 · 电脑', body: '点击工位上的电脑区域，会弹出电脑浮层，小人进入敲键盘状态。屏幕会掉落 0 和 1，还有 3% 概率获得藏品「神秘磁盘」。', tip: '午夜模式（23:00–06:00）电脑仍可点击，但画面会变暗。', target: 'hotzone', hotZoneId: 'W01', room: 'room_working', switchToRoom: 'room_working' },
+  { id: 'computer', title: '办公区 · 电脑', body: '点击工位上的电脑区域，会弹出电脑浮层，小人进入敲键盘状态。屏幕会掉落 0 和 1，还有 3% 概率获得藏品「神秘磁盘」。', tip: '正常游玩不会按真实时间自动变暗；只有本地开启低光调试时，电脑才会切到简化画面。', target: 'hotzone', hotZoneId: 'W01', room: 'room_working', switchToRoom: 'room_working' },
   { id: 'desk', title: '办公区 · 桌面', body: '左工位桌面是可探索区域。首次点击会弹出解锁面板——攒够碎片可买「桌子咖啡杯」；解锁后再点可查看特写浮层。', tip: '家具解锁后不会一直贴在主画面上，只在点击后的浮层里出现。', target: 'hotzone', hotZoneId: 'W03', room: 'room_working' },
   { id: 'bookshelf', title: '办公区 · 书架与墙面', body: '书架（中央）和左侧公告板区也能点击。可分别解锁「书架杂物摆件」和「墙面霓虹贴纸」。', target: 'hotzone', hotZoneId: 'W05', room: 'room_working' },
   { id: 'go-living', title: '去生活区看看', body: '生活区有床、冰箱、街机、垃圾桶等核心互动。点击底部「生活区」Tab 切换场景，我们继续探索。', target: 'tab-living', room: 'room_working', switchToRoom: 'room_living' },
@@ -63,10 +63,11 @@ export const GUIDE_SECTIONS = [
     { name: '樱树 / 野草带', desc: '装饰热区，会弹出林海主题文案' },
   ]},
   { title: '小人状态', items: [
-    { name: '待机 / 敲键盘 / 睡觉 / 乱爬', desc: '每 45 秒自动切换（特殊状态除外）' },
+    { name: '待机 / 敲键盘 / 四处活动', desc: '每 45 秒会在常规状态间切换（特殊状态除外）' },
+    { name: '主动休息', desc: '点击床或林间休眠点后进入 5 分钟休息状态，也可以提前叫醒' },
     { name: '卡 Bug 闪烁', desc: '翻垃圾桶失手或过期可乐时触发，3 秒恢复' },
     { name: '思念状态', desc: '长期离线后坐床边，连点小人 3 次解除' },
-    { name: '午夜模式', desc: '23:00–06:00 小人睡觉，部分交互禁用' },
+    { name: '低光调试', desc: '仅在本地手动开启时生效，用于检查夜景表现，不会随真实时间自动触发' },
   ]},
   { title: '隐藏彩蛋', items: [
     { name: '连点小人 20 次', desc: '每日 1 次，获得 C014 与成就' },

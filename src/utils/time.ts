@@ -1,6 +1,15 @@
+const MIDNIGHT_DEBUG_KEY = 'dou_force_midnight';
+
 export function isMidnightMode(date = new Date()): boolean {
-  const hour = date.getHours();
-  return hour >= 23 || hour < 6;
+  if (typeof window !== 'undefined') {
+    const forced = window.localStorage.getItem(MIDNIGHT_DEBUG_KEY);
+    if (forced === '1') return true;
+    if (forced === '0') return false;
+  }
+
+  // Keep normal play visuals stable. Midnight mode is now opt-in only.
+  void date;
+  return false;
 }
 
 export function isWeekend(date = new Date()): boolean {

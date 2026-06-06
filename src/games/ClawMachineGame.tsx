@@ -1,83 +1,128 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { setupPixelCanvas, drawPixelText } from '@/games/pixelCanvas';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { setupPixelCanvas } from '@/games/pixelCanvas';
+import { CLAW_PRIZES, type ClawPrizeDef } from '@/data/clawPrizes';
 import { vibrate } from '@/utils/sound';
 
 const W = 360;
 const H = 520;
 const GRABS = 6;
-const PRIZES = [
-  { id: 0, name: '像素猫', color: '#ff8844', emoji: '🐱', shards: 3 },
-  { id: 1, name: '数据云', color: '#88ccff', emoji: '☁', shards: 2 },
-  { id: 2, name: '故障星', color: '#ffdd44', emoji: '★', shards: 4 },
-  { id: 3, name: '赛博心', color: '#ff6688', emoji: '♥', shards: 2 },
-  { id: 4, name: 'CPU块', color: '#aaaaaa', emoji: '▣', shards: 5 },
-  { id: 5, name: '神秘盒', color: '#cc88ff', emoji: '?', shards: 3 },
-];
+const LANE_X = [54, 117, 180, 243, 306];
+const STACK_Y = [248, 312, 376];
+const CLAW_TOP_Y = 62;
+const EMPTY_DROP_Y = 392;
+const PRIZE_JITTER = [
+  [{ x: -4, y: 2 }, { x: 3, y: -4 }, { x: -2, y: 5 }],
+  [{ x: 5, y: -1 }, { x: -6, y: 4 }, { x: 4, y: -5 }],
+  [{ x: -3, y: 4 }, { x: 2, y: -5 }, { x: -5, y: 2 }],
+  [{ x: 4, y: 3 }, { x: -4, y: -3 }, { x: 3, y: 5 }],
+  [{ x: -5, y: -2 }, { x: 4, y: 5 }, { x: -3, y: -4 }],
+] as const;
 
-type Phase = 'move' | 'drop' | 'grab' | 'rise' | 'result';
+type Phase = 'move' | 'drop' | 'grab' | 'rise';
 
 interface ClawMachineGameProps {
   onExit: (shardsEarned: number) => void;
 }
 
+interface LanePrizeTarget {
+  prize: ClawPrizeDef;
+  row: number;
+}
+
+function loadPrizeImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function drawUiText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  size: number,
+  align: CanvasTextAlign = 'center',
+) {
+  ctx.fillStyle = color;
+  ctx.font = `600 ${size}px "Noto Sans SC", sans-serif`;
+  ctx.textAlign = align;
+  ctx.fillText(text, x, y);
+}
+
+function drawPrizeSprite(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  box: number,
+) {
+  const scale = Math.min(box / image.width, box / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  ctx.drawImage(image, x - width / 2, y - height / 2, width, height);
+}
+
 export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const clawX = useRef(W / 2);
-  const clawY = useRef(48);
+  const clawLane = useRef(2);
+  const clawY = useRef(CLAW_TOP_Y);
   const phase = useRef<Phase>('move');
-  const grabbed = useRef<typeof PRIZES[0] | null>(null);
-  const prizeTaken = useRef<Set<number>>(new Set());
+  const grabbed = useRef<ClawPrizeDef | null>(null);
+  const prizeTaken = useRef<Set<string>>(new Set());
+  const activeTarget = useRef<LanePrizeTarget | null>(null);
+  const targetDropY = useRef(EMPTY_DROP_Y);
+  const spriteMap = useRef<Record<string, HTMLImageElement>>({});
   const animRef = useRef(0);
 
   const [grabsLeft, setGrabsLeft] = useState(GRABS);
   const [totalShards, setTotalShards] = useState(0);
-  const [message, setMessage] = useState('← → 移动 · 空格/按钮抓取');
+  const [message, setMessage] = useState('左右换列，对准玩偶后按抓取');
   const [showResult, setShowResult] = useState(false);
   const [clawPhase, setClawPhase] = useState<Phase>('move');
+  const [loading, setLoading] = useState(true);
+  const [caughtPrizeIds, setCaughtPrizeIds] = useState<string[]>([]);
   const grabsLeftRef = useRef(GRABS);
   const totalRef = useRef(0);
+  const laneColumns = useMemo(() => (
+    Array.from({ length: 5 }, (_, laneIndex) =>
+      CLAW_PRIZES.filter((_, prizeIndex) => prizeIndex % 5 === laneIndex),
+    )
+  ), []);
+  const caughtPrizes = caughtPrizeIds
+    .map((id) => CLAW_PRIZES.find((prize) => prize.id === id))
+    .filter((prize): prize is ClawPrizeDef => !!prize);
+  const getLaneTarget = useCallback((laneIndex: number) => {
+    const lane = laneColumns[laneIndex];
+    const available = lane
+      .map((prize, row) => ({ prize, row }))
+      .filter(({ prize }) => !prizeTaken.current.has(prize.id));
+    if (available.length === 0) return null;
+    return available[Math.floor(Math.random() * available.length)];
+  }, [laneColumns]);
 
-  const drawPrize = (
-    ctx: CanvasRenderingContext2D,
-    p: (typeof PRIZES)[0],
-    x: number,
-    y: number,
-    scale = 1,
-  ) => {
-    const s = 28 * scale;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(x - s / 2, y - s / 2, s, s);
-    ctx.strokeStyle = '#00000044';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x - s / 2, y - s / 2, s, s);
-    ctx.fillStyle = '#fff';
-    ctx.font = `${14 * scale}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(p.emoji, x, y + 5);
-  };
-
-  const prizePositions = useCallback(() => {
-    const positions: { p: (typeof PRIZES)[0]; x: number; y: number }[] = [];
-    PRIZES.forEach((p, i) => {
-      if (prizeTaken.current.has(p.id)) return;
-      const col = i % 3;
-      const row = Math.floor(i / 3);
-      positions.push({ p, x: 70 + col * 110, y: 320 + row * 70 });
-    });
-    return positions;
+  const moveLane = useCallback((delta: number) => {
+    if (phase.current !== 'move') return;
+    clawLane.current = Math.max(0, Math.min(LANE_X.length - 1, clawLane.current + delta));
   }, []);
 
   const tryGrab = useCallback(() => {
-    if (phase.current !== 'move' || grabsLeftRef.current <= 0) return;
+    if (phase.current !== 'move' || grabsLeftRef.current <= 0 || loading) return;
+    const target = getLaneTarget(clawLane.current);
+    activeTarget.current = target;
+    targetDropY.current = target ? STACK_Y[target.row] - 42 : EMPTY_DROP_Y;
     phase.current = 'drop';
     setClawPhase('drop');
-    setMessage('下放中...');
-  }, []);
+    setMessage(target ? '爪子下放中，随机锁定了一只玩偶...' : '这一列空了，碰碰运气');
+  }, [getLaneTarget, loading]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') clawX.current = Math.max(40, clawX.current - 18);
-      if (e.key === 'ArrowRight') clawX.current = Math.min(W - 40, clawX.current + 18);
+      if (e.key === 'ArrowLeft') moveLane(-1);
+      if (e.key === 'ArrowRight') moveLane(1);
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         tryGrab();
@@ -85,131 +130,181 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tryGrab]);
+  }, [moveLane, tryGrab]);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all(CLAW_PRIZES.map((prize) => loadPrizeImage(prize.image)))
+      .then((images) => {
+        if (!alive) return;
+        spriteMap.current = Object.fromEntries(images.map((image, index) => [CLAW_PRIZES[index].id, image]));
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setMessage('玩偶装柜失败，返回大厅后可重新进入。');
+        setLoading(false);
+      });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || loading) return;
     const ctx = setupPixelCanvas(canvas, W, H);
 
     const step = () => {
+      const clawX = LANE_X[clawLane.current];
+      const targetPrize = activeTarget.current;
       if (phase.current === 'drop') {
-        clawY.current += 4;
-        if (clawY.current >= 280) {
+        clawY.current += 5;
+        if (clawY.current >= targetDropY.current) {
           phase.current = 'grab';
           setClawPhase('grab');
-          const positions = prizePositions();
-          let hit: (typeof positions)[0] | null = null;
-          let best = 999;
-          for (const pos of positions) {
-            const d = Math.abs(pos.x - clawX.current);
-            if (d < 36 && d < best) {
-              best = d;
-              hit = pos;
+          if (targetPrize) {
+            if (Math.random() < 0.5) {
+              grabbed.current = targetPrize.prize;
+              prizeTaken.current.add(targetPrize.prize.id);
+              setMessage(`抓到了 ${targetPrize.prize.name}！`);
+              vibrate(40);
+            } else {
+              grabbed.current = null;
+              setMessage(`${targetPrize.prize.name} 从爪边滑走了，再试一次`);
             }
-          }
-          if (hit && Math.random() < 0.42 + (36 - best) / 80) {
-            grabbed.current = hit.p;
-            prizeTaken.current.add(hit.p.id);
-            setMessage(`抓住了 ${hit.p.name}！`);
-            vibrate(40);
           } else {
             grabbed.current = null;
-            setMessage('滑掉了…再试一次');
+            setMessage('这一列已经空了，换一列再试');
           }
           phase.current = 'rise';
           setClawPhase('rise');
         }
       } else if (phase.current === 'rise') {
-        clawY.current -= 3;
-        if (clawY.current <= 48) {
+        clawY.current -= 4;
+        if (clawY.current <= CLAW_TOP_Y) {
           phase.current = 'move';
           setClawPhase('move');
+          clawY.current = CLAW_TOP_Y;
           grabsLeftRef.current -= 1;
           setGrabsLeft(grabsLeftRef.current);
-          if (grabbed.current) {
-            totalRef.current += grabbed.current.shards;
+          const settledPrize = grabbed.current;
+          if (settledPrize) {
+            totalRef.current += settledPrize.shards;
             setTotalShards(totalRef.current);
+            setCaughtPrizeIds((current) => [...current, settledPrize.id]);
           }
           grabbed.current = null;
-          if (grabsLeftRef.current <= 0) {
+          activeTarget.current = null;
+          if (grabsLeftRef.current <= 0 || prizeTaken.current.size >= CLAW_PRIZES.length) {
             setShowResult(true);
             setMessage('本局结束');
           } else {
-            setMessage(`剩余 ${grabsLeftRef.current} 次 · ← → 移动`);
+            setMessage(`剩余 ${grabsLeftRef.current} 次，换列继续抓`);
           }
         }
       }
 
-      ctx.fillStyle = '#1a0a20';
+      ctx.fillStyle = '#12071b';
       ctx.fillRect(0, 0, W, H);
 
-      // 玻璃罩
-      ctx.fillStyle = '#2d1a40';
-      ctx.fillRect(12, 60, W - 24, H - 120);
-      ctx.strokeStyle = '#00ffcc55';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(12, 60, W - 24, H - 120);
+      ctx.fillStyle = '#2b1440';
+      ctx.fillRect(20, 22, W - 40, H - 44);
+      ctx.fillStyle = '#1a0b28';
+      ctx.fillRect(34, 48, W - 68, H - 120);
+      ctx.strokeStyle = '#6f4a86';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(34, 48, W - 68, H - 120);
 
-      drawPixelText(ctx, '赛博抓娃娃机', W / 2, 32, '#ff88cc', 10);
-      drawPixelText(ctx, `碎片 +${totalRef.current}  剩余 ${grabsLeftRef.current} 次`, W / 2, 52, '#aaa', 7);
+      ctx.fillStyle = '#3c1e58';
+      ctx.fillRect(46, 76, W - 92, 324);
+      ctx.fillStyle = '#67f4ef22';
+      ctx.fillRect(46, 76, W - 92, 324);
+      ctx.strokeStyle = '#ff8cd8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(46, 76, W - 92, 324);
 
-      // 轨道
-      ctx.fillStyle = '#444';
-      ctx.fillRect(20, 44, W - 40, 8);
+      ctx.fillStyle = '#4f2f74';
+      ctx.fillRect(52, 96, W - 104, 10);
+      for (let index = 0; index < LANE_X.length; index += 1) {
+        ctx.fillStyle = index === clawLane.current ? '#9ffef4' : '#6f6a90';
+        ctx.fillRect(LANE_X[index] - 12, 95, 24, 12);
+      }
 
-      // 线索
-      ctx.strokeStyle = '#888';
+      ctx.fillStyle = '#f5f2d6';
+      ctx.fillRect(56, 414, W - 112, 50);
+      ctx.fillStyle = '#c886ff22';
+      ctx.fillRect(56, 414, W - 112, 50);
+      ctx.strokeStyle = '#ffcb66';
+      ctx.strokeRect(56, 414, W - 112, 50);
+
+      drawUiText(ctx, '赛博抓娃娃机', W / 2, 38, '#ffe2fb', 16);
+      drawUiText(ctx, `玩偶池 ${CLAW_PRIZES.length - prizeTaken.current.size}/${CLAW_PRIZES.length}`, 52, 64, '#92efe7', 11, 'left');
+      drawUiText(ctx, `碎片 +${totalRef.current}`, W - 52, 64, '#ffd86b', 11, 'right');
+      drawUiText(ctx, `剩余 ${grabsLeftRef.current} 次`, W / 2, 428, '#402650', 13);
+      drawUiText(ctx, '回收槽', W / 2, 448, '#7d4f16', 11);
+
+      for (let laneIndex = 0; laneIndex < laneColumns.length; laneIndex += 1) {
+        const lane = laneColumns[laneIndex];
+        for (let row = lane.length - 1; row >= 0; row -= 1) {
+          const prize = lane[row];
+          if (prizeTaken.current.has(prize.id)) continue;
+          const jitter = PRIZE_JITTER[laneIndex][row] ?? { x: 0, y: 0 };
+          const x = LANE_X[laneIndex] + jitter.x;
+          const y = STACK_Y[row] + jitter.y;
+          const image = spriteMap.current[prize.id];
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+          ctx.fillRect(x - 18, y + 16, 36, 7);
+          if (image) drawPrizeSprite(ctx, image, x, y, row === 0 ? 40 : row === 1 ? 38 : 36);
+          drawUiText(ctx, `+${prize.shards}`, x, y + 30, '#fef4c6', 9);
+        }
+      }
+
+      ctx.strokeStyle = '#b6b0c8';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(clawX.current, 52);
-      ctx.lineTo(clawX.current, clawY.current - 16);
+      ctx.moveTo(clawX, 108);
+      ctx.lineTo(clawX, clawY.current - 12);
       ctx.stroke();
 
-      // 爪子
-      const open = phase.current === 'grab' ? 8 : 18;
-      ctx.fillStyle = '#ccc';
-      ctx.fillRect(clawX.current - 20, clawY.current - 8, 40, 10);
-      ctx.fillStyle = '#aaa';
-      ctx.fillRect(clawX.current - open, clawY.current + 2, 12, 14);
-      ctx.fillRect(clawX.current + open - 12, clawY.current + 2, 12, 14);
+      ctx.fillStyle = '#d9d8e8';
+      ctx.fillRect(clawX - 18, clawY.current - 10, 36, 10);
+      ctx.fillStyle = '#b2b0c9';
+      ctx.fillRect(clawX - 4, clawY.current, 8, 8);
+      ctx.strokeStyle = '#d9d8e8';
+      ctx.beginPath();
+      ctx.moveTo(clawX - 10, clawY.current + 4);
+      ctx.lineTo(clawX - 18, clawY.current + 18);
+      ctx.moveTo(clawX + 10, clawY.current + 4);
+      ctx.lineTo(clawX + 18, clawY.current + 18);
+      ctx.moveTo(clawX, clawY.current + 4);
+      ctx.lineTo(clawX, clawY.current + 20);
+      ctx.stroke();
 
-      if (grabbed.current && (phase.current === 'rise' || phase.current === 'grab')) {
-        drawPrize(ctx, grabbed.current, clawX.current, clawY.current + 24, 0.8);
+      if (grabbed.current && (phase.current === 'grab' || phase.current === 'rise')) {
+        const image = spriteMap.current[grabbed.current.id];
+        if (image) drawPrizeSprite(ctx, image, clawX, clawY.current + 34, 34);
       }
-
-      for (const { p, x, y } of prizePositions()) {
-        drawPrize(ctx, p, x, y, 1);
-        ctx.fillStyle = '#ffffff66';
-        ctx.font = '7px monospace';
-        ctx.fillText(`+${p.shards}`, x, y + 22);
-      }
-
-      // 出口槽
-      ctx.fillStyle = '#ffd70022';
-      ctx.fillRect(W / 2 - 40, H - 72, 80, 36);
-      drawPixelText(ctx, '出口', W / 2, H - 48, '#ffd700', 8);
 
       animRef.current = requestAnimationFrame(step);
     };
 
     animRef.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animRef.current);
-  }, [prizePositions]);
+  }, [laneColumns, loading]);
 
   return (
-    <div className="arcade-game-wrap">
+    <div className="arcade-game-wrap claw-game-wrap">
       <button type="button" className="btn-secondary arcade-game-back" onClick={() => onExit(totalRef.current)}>
         ← 返回大厅
       </button>
-      <canvas ref={canvasRef} className="arcade-canvas" />
-      <p className="arcade-hint">{message}</p>
-      <div className="arcade-claw-controls">
-        <button type="button" className="btn-secondary claw-btn" onClick={() => { clawX.current = Math.max(40, clawX.current - 24); }}>◀</button>
-        <button type="button" className="btn-primary claw-btn grab-btn" onClick={tryGrab} disabled={grabsLeft <= 0 || clawPhase !== 'move'}>
-          抓取!
-        </button>
-        <button type="button" className="btn-secondary claw-btn" onClick={() => { clawX.current = Math.min(W - 40, clawX.current + 24); }}>▶</button>
+      <div className="claw-canvas-shell">
+        <canvas ref={canvasRef} className="arcade-canvas claw-canvas" />
+        <div className="claw-overlay-controls">
+          <button type="button" className="btn-secondary claw-btn claw-btn-overlay" onClick={() => moveLane(-1)}>◀</button>
+          <button type="button" className="btn-primary claw-btn grab-btn claw-btn-overlay claw-grab-overlay" onClick={tryGrab} disabled={grabsLeft <= 0 || clawPhase !== 'move' || loading}>
+            抓取
+          </button>
+          <button type="button" className="btn-secondary claw-btn claw-btn-overlay" onClick={() => moveLane(1)}>▶</button>
+        </div>
       </div>
       <div className="arcade-game-actions">
         <button type="button" className="btn-secondary" onClick={() => onExit(totalRef.current)}>
@@ -221,6 +316,14 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
           <div className="arcade-result-card crt-enter">
             <h3>抓娃娃结算</h3>
             <p className="arcade-result-shards">+{totalShards} 数据碎片</p>
+            <div className="claw-result-grid">
+              {caughtPrizes.length > 0 ? caughtPrizes.map((prize) => (
+                <div key={prize.id} className="claw-result-item">
+                  <img src={prize.image} alt={prize.name} />
+                  <span>{prize.name}</span>
+                </div>
+              )) : <p className="claw-result-empty">这次没抓到玩偶，下次再来。</p>}
+            </div>
             <button type="button" className="btn-primary" onClick={() => onExit(totalRef.current)}>
               收入囊中
             </button>

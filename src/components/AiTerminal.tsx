@@ -14,14 +14,14 @@ interface AiTerminalProps {
   profile: AvatarProfile | null;
   shards: number;
   collectiblesCount: number;
-  midnight: boolean;
+  nightDebug: boolean;
   onLoot?: (amount: number) => void;
 }
 
-export function AiTerminal({ profile, shards, collectiblesCount, midnight, onLoot }: AiTerminalProps) {
+export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onLoot }: AiTerminalProps) {
   const [lines, setLines] = useState<TerminalLine[]>([
     { type: 'sys', text: 'ROOM_OS v4.0.4 — 神经终端已挂载' },
-    { type: 'out', text: midnight ? '>> 午夜模式：低功耗运行中' : '>> 输入 help 查看指令，或直接对话' },
+    { type: 'out', text: nightDebug ? '>> 低光调试已启用，终端切换到简化界面' : '>> 输入 help 查看指令，或直接对话' },
   ]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -51,7 +51,7 @@ export function AiTerminal({ profile, shards, collectiblesCount, midnight, onLoo
     if (cmd === 'status') {
       append({
         type: 'out',
-        text: `碎片:${shards} | 藏品:${collectiblesCount}/15 | AI余量:${getAiRemaining()} | 模式:${midnight ? 'MIDNIGHT' : 'NORMAL'}`,
+        text: `碎片:${shards} | 藏品:${collectiblesCount}/15 | AI余量:${getAiRemaining()} | 模式:${nightDebug ? 'LOW_LIGHT_DEBUG' : 'NORMAL'}`,
       });
       return;
     }
