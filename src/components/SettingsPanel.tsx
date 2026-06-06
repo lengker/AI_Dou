@@ -2,6 +2,18 @@ import { ACHIEVEMENTS } from '@/data/titles';
 import { useGameStore } from '@/store/gameStore';
 import { Overlay } from '@/components/Overlay';
 
+const RESET_STORAGE_KEYS = [
+  'room404-save',
+  'room404-last-open',
+  'room404-ai-quota',
+  'room404-loot',
+  'dou_force_midnight',
+];
+
+const RESET_STORAGE_PREFIXES = [
+  'weekend-cola-',
+];
+
 export function SettingsPanel({
   open, onClose, onRemap, onToast, onRestartTutorial,
 }: {
@@ -16,6 +28,23 @@ export function SettingsPanel({
   const handleRemap = () => {
     if (shards < 30) { onToast('数据碎片不足。'); return; }
     if (startRemapping()) { onClose(); onRemap(); }
+  };
+
+  const handleRestartGame = () => {
+    const confirmed = window.confirm('这会删除当前浏览器中的全部本地存档、教程进度与调试状态，并立即重新开始游戏。此操作无法撤销，是否继续？');
+    if (!confirmed) return;
+
+    useGameStore.persist.clearStorage();
+    RESET_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (RESET_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        window.localStorage.removeItem(key);
+      }
+    }
+    window.sessionStorage.removeItem('dou_force_midnight');
+    window.location.reload();
   };
 
   return (
@@ -44,6 +73,15 @@ export function SettingsPanel({
           </li>
         ))}
       </ul>
+      <div className="settings-dev-tools">
+        <h3 className="settings-dev-title">重新开始</h3>
+        <p className="settings-dev-copy">
+          删除当前浏览器中的全部本地存档、教程进度与调试状态，并从全新开局重新开始游戏。
+        </p>
+        <button className="btn-secondary settings-dev-reset" type="button" onClick={handleRestartGame}>
+          重新开始游戏
+        </button>
+      </div>
     </Overlay>
   );
 }

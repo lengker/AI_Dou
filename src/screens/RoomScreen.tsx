@@ -27,6 +27,13 @@ const PET_LONG_PRESS_MS = 240;
 const PET_DOUBLE_TAP_MS = 260;
 type OnboardingTarget = 'pet' | 'tabs' | 'collection' | 'hotzone';
 interface Point { x: number; y: number; }
+interface HighlightRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  scope?: 'stage' | 'viewport';
+}
 
 const PET_EMOTICONS = ['(≧▽≦)', '(｡>ω<｡)', '(๑>◡<๑)', '(˶ˆᗜˆ˵)', '(づ｡◕‿‿◕｡)づ', '(ฅ^oωo^ ฅ)', '(｡･ω･｡)', '(◕‿◕✿)', '(っ˘ω˘ς )', '(*^▽^*)'];
 const PET_GREETINGS = [
@@ -108,15 +115,18 @@ function getOnboardingHighlight(
   step: (typeof ONBOARDING_STEPS)[number] | undefined,
   currentRoom: RoomId,
   petPos: { x: number; y: number },
-) {
+): HighlightRect | null {
   if (!step) return null;
-  if (step.target === 'pet') return { x: petPos.x - 6, y: petPos.y - 8, w: 14, h: 16 };
+  if (step.target === 'pet') return { x: petPos.x - 6, y: petPos.y - 8, w: 14, h: 16, scope: 'stage' };
   if (step.target === 'tabs') return { x: 29, y: 87, w: 42, h: 12 };
   if (step.target === 'collection') return { x: 82, y: 82, w: 16, h: 16 };
   if (step.target === 'hotzone' && step.hotZoneId && step.room === currentRoom) {
+    if (step.hotZoneId === 'W01') {
+      return { x: 28, y: 34, w: 16, h: 17, scope: 'stage' };
+    }
     const zone = HOT_ZONES.find((item) => item.id === step.hotZoneId);
     if (!zone) return null;
-    return { x: zone.x, y: zone.y, w: zone.w, h: zone.h };
+    return { x: zone.x, y: zone.y, w: zone.w, h: zone.h, scope: 'stage' };
   }
   return null;
 }
@@ -234,8 +244,10 @@ export function RoomScreen() {
   const [petDragging, setPetDragging] = useState(false);
   const [petJumping, setPetJumping] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [stageFrame, setStageFrame] = useState({ left: 0, top: 0, width: 0, height: 0 });
   const [slideAnim, setSlideAnim] = useState('');
   const charCounter = useRef(0);
+  const sceneRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const petLongPressTimerRef = useRef<number | null>(null);
   const petTapTimerRef = useRef<number | null>(null);
@@ -290,20 +302,51 @@ export function RoomScreen() {
   }, [clampPetToPlayableArea]);
 
   useEffect(() => {
-    if (!stageRef.current) return;
-    const updateSize = () => {
-      if (!stageRef.current) return;
+    if (!stageRef.current || !sceneRef.current) return;
+    const updateStageMetrics = () => {
+      if (!stageRef.current || !sceneRef.current) return;
+      const stageRect = stageRef.current.getBoundingClientRect();
+      const sceneRect = sceneRef.current.getBoundingClientRect();
       setStageSize({
-        width: stageRef.current.clientWidth,
-        height: stageRef.current.clientHeight,
+        width: stageRect.width,
+        height: stageRect.height,
+      });
+      setStageFrame({
+        left: stageRect.left - sceneRect.left,
+        top: stageRect.top - sceneRect.top,
+        width: stageRect.width,
+        height: stageRect.height,
       });
     };
 
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
+    updateStageMetrics();
+    const observer = new ResizeObserver(updateStageMetrics);
     observer.observe(stageRef.current);
-    return () => observer.disconnect();
+    observer.observe(sceneRef.current);
+    window.addEventListener('resize', updateStageMetrics);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateStageMetrics);
+    };
   }, []);
+
+  const getHighlightStyle = useCallback((highlight: HighlightRect) => {
+    if (highlight.scope === 'stage') {
+      return {
+        left: `${stageFrame.left + (stageFrame.width * highlight.x) / 100}px`,
+        top: `${stageFrame.top + (stageFrame.height * highlight.y) / 100}px`,
+        width: `${(stageFrame.width * highlight.w) / 100}px`,
+        height: `${(stageFrame.height * highlight.h) / 100}px`,
+      };
+    }
+
+    return {
+      left: `${highlight.x}%`,
+      top: `${highlight.y}%`,
+      width: `${highlight.w}%`,
+      height: `${highlight.h}%`,
+    };
+  }, [stageFrame]);
 
   useEffect(() => {
     if (tutorialActive) return;
@@ -558,7 +601,7 @@ export function RoomScreen() {
   };
 
   return (
-    <div className="room-scene">
+    <div className="room-scene" ref={sceneRef}>
       <div className="room-stage" ref={stageRef} onClick={handleStageClick}>
         <img src={ROOM_BACKGROUNDS[currentRoom]} alt="room" className={`room-bg ${nightDebug ? 'low-light-debug' : ''} ${slideAnim}`} />
 
@@ -753,12 +796,7 @@ export function RoomScreen() {
           {onboardingHighlight ? (
             <div
               className="tutorial-spotlight"
-              style={{
-                left: `${onboardingHighlight.x}%`,
-                top: `${onboardingHighlight.y}%`,
-                width: `${onboardingHighlight.w}%`,
-                height: `${onboardingHighlight.h}%`,
-              }}
+              style={getHighlightStyle(onboardingHighlight)}
             />
           ) : (
             <div className="tutorial-dim-full" />
@@ -784,7 +822,7 @@ export function RoomScreen() {
         </div>
       )}
       <TutorialGuide active={shouldShowTutorialGuide} stepIndex={tutorialStep} currentRoom={currentRoom}
-        petPos={petPos} onNext={nextTutorialStep} onSkip={skipTutorial} onSwitchRoom={(room) => {
+        petPos={petPos} stageFrame={stageFrame} onNext={nextTutorialStep} onSkip={skipTutorial} onSwitchRoom={(room) => {
           if (room === currentRoom) return;
           const currentIndex = ROOM_TABS.findIndex((tab) => tab.id === currentRoom);
           const nextIndex = ROOM_TABS.findIndex((tab) => tab.id === room);

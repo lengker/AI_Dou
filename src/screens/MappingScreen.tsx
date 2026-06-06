@@ -41,7 +41,7 @@ export function MappingScreen() {
       <div className="mapping-screen">
         <div className="scan-frame">
           <h1 className="mapping-title pixel-font">请上传视觉特征以建立数字档案</h1>
-          <p style={{ fontSize: 12, color: '#888', marginBottom: 20, lineHeight: 1.6 }}>
+          <p className="mapping-subtitle">
             上传一张照片，系统会生成你的像素分身并入住 404 号房间
           </p>
           <div className="mapping-actions">
@@ -68,11 +68,11 @@ export function MappingScreen() {
   }
 
   const previewProfile = createProfileFromMapping(nickname, appearance, isAbnormal);
-  const isArchitect = nickname.trim().toLowerCase() === 'wang yu';
+  const isArchitect = nickname.trim().toLowerCase() === 'lxz';
 
   return (
     <div className="mapping-screen">
-      {abnormalMessage && <p style={{ color: '#ff6666', marginBottom: 16, fontSize: 12, maxWidth: 360 }}>{abnormalMessage}</p>}
+      {abnormalMessage && <p className="mapping-alert">{abnormalMessage}</p>}
       <div className={`character-card glitch-in ${isArchitect ? 'holographic' : ''}`}>
         <img src="/DOU/images/role/default.png" alt="avatar" className="card-avatar"
           style={{ filter: `${getSkinFilter(appearance.skinTone)} ${getHairFilter(appearance.hairColor)}` }} />
