@@ -198,7 +198,7 @@ const initialState: GameState = {
   lastExitAt: null, daily: { date: todayKey(), trashSearchCount: 0, randomEventCount: 0, easterEggTriggered: false },
   tempBuff: {}, pendingOffline: null, showRandomEvent: null, computerSessionEnd: null,
   screen: 'mapping', returnRoom: null,
-  tutorialCompleted: false, tutorialActive: false, tutorialStep: 0, showWelcomeModal: false,
+  tutorialCompleted: false, tutorialActive: false, tutorialStep: 0, tutorialReplayMode: false, showWelcomeModal: false,
   energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
   discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
   mainlineStep: 'intro', storyDialog: null,
@@ -262,6 +262,7 @@ export const useGameStore = create<GameState & GameActions>()(
           storyDialog: state.storyDialog ?? null,
           tutorialActive: progressedSave ? false : (state.tutorialActive ?? false),
           tutorialStep: progressedSave ? 0 : (state.tutorialStep ?? 0),
+          tutorialReplayMode: false,
           showWelcomeModal: progressedSave ? false : (state.showWelcomeModal ?? false),
           onboardingActive: progressedSave ? false : (state.onboardingActive ?? false),
           onboardingStep: progressedSave ? 0 : (state.onboardingStep ?? 0),
@@ -302,7 +303,7 @@ export const useGameStore = create<GameState & GameActions>()(
         set({
           hasCompletedMapping: true, profile, collectibles, achievements, screen: 'room',
           petState: randomPick(ACTIVE_PET_STATES),
-          showWelcomeModal: true, tutorialActive: false, tutorialStep: 0,
+          showWelcomeModal: true, tutorialActive: false, tutorialStep: 0, tutorialReplayMode: false,
           currentRoom: 'room_working',
           energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
           discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
@@ -582,18 +583,36 @@ export const useGameStore = create<GameState & GameActions>()(
 
       resetForRemapping: () => set({ screen: 'mapping' }),
 
-      startTutorial: () => set({ tutorialActive: true, tutorialStep: 0, tutorialCompleted: false, showWelcomeModal: false }),
+      startTutorial: () => set({
+        tutorialActive: true,
+        tutorialStep: 0,
+        tutorialCompleted: false,
+        tutorialReplayMode: true,
+        showWelcomeModal: false,
+      }),
 
       nextTutorialStep: () => {
         const { tutorialStep } = get();
         if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
-          set({ tutorialActive: false, tutorialCompleted: true, tutorialStep: 0, showWelcomeModal: false });
+          set({
+            tutorialActive: false,
+            tutorialCompleted: true,
+            tutorialStep: 0,
+            tutorialReplayMode: false,
+            showWelcomeModal: false,
+          });
         } else {
           set({ tutorialStep: tutorialStep + 1 });
         }
       },
 
-      skipTutorial: () => set({ tutorialActive: false, tutorialCompleted: true, tutorialStep: 0, showWelcomeModal: false }),
+      skipTutorial: () => set({
+        tutorialActive: false,
+        tutorialCompleted: true,
+        tutorialStep: 0,
+        tutorialReplayMode: false,
+        showWelcomeModal: false,
+      }),
       dismissWelcomeModal: () => set({ showWelcomeModal: false, onboardingActive: true, onboardingStep: 0 }),
       beginTutorialFromWelcome: () => set({ showWelcomeModal: false, onboardingActive: true, onboardingStep: 0 }),
       dismissStoryDialog: () => set({ storyDialog: null }),

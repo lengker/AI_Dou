@@ -125,6 +125,7 @@ export interface GameState {
   tutorialCompleted: boolean;
   tutorialActive: boolean;
   tutorialStep: number;
+  tutorialReplayMode: boolean;
   showWelcomeModal: boolean;
   energy: number;
   maxEnergy: number;

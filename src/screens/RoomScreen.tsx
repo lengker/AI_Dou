@@ -188,6 +188,7 @@ export function RoomScreen() {
   const storyDialog = useGameStore((s) => s.storyDialog);
   const tutorialActive = useGameStore((s) => s.tutorialActive);
   const tutorialStep = useGameStore((s) => s.tutorialStep);
+  const tutorialReplayMode = useGameStore((s) => s.tutorialReplayMode);
   const showWelcomeModal = useGameStore((s) => s.showWelcomeModal);
   const onboardingActive = useGameStore((s) => s.onboardingActive);
   const onboardingStep = useGameStore((s) => s.onboardingStep);
@@ -530,10 +531,15 @@ export function RoomScreen() {
   const sceneProgress = sceneProgressTotal > 0 ? Math.round((sceneProgressDone / sceneProgressTotal) * 100) : 0;
   const shouldShowTutorialGuide = tutorialActive
     && !pendingOffline
-    && completedHints.length === 0
-    && discoveredZones.length === 0
-    && unlockedRooms.length <= 1
-    && collectibles.length === 0;
+    && (
+      tutorialReplayMode
+      || (
+        completedHints.length === 0
+        && discoveredZones.length === 0
+        && unlockedRooms.length <= 1
+        && collectibles.length === 0
+      )
+    );
   const shouldShowOnboardingOverlay = onboardingActive
     && !!onboardingCurrent
     && !pendingOffline
