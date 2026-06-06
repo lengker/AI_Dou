@@ -18,6 +18,7 @@ import { GuideBook } from '@/components/GuideBook';
 import { TutorialGuide, WelcomeModal } from '@/components/TutorialGuide';
 import { PetChatPanel } from '@/components/PetChatPanel';
 import { InteractionOverlay } from '@/components/InteractionOverlay';
+import { FurnitureLayer } from '@/components/FurnitureLayer';
 import type { HintKey, RoomId } from '@/types';
 
 interface ActiveOverlay { type: string; payload?: Record<string, unknown>; }
@@ -604,6 +605,7 @@ export function RoomScreen() {
     <div className="room-scene" ref={sceneRef}>
       <div className="room-stage" ref={stageRef} onClick={handleStageClick}>
         <img src={ROOM_BACKGROUNDS[currentRoom]} alt="room" className={`room-bg ${nightDebug ? 'low-light-debug' : ''} ${slideAnim}`} />
+        <FurnitureLayer room={currentRoom} unlocked={furniture} />
 
         <div className="hotzone-layer">
           {zones.map((zone) => {
@@ -728,7 +730,14 @@ export function RoomScreen() {
       <InteractionOverlay
         overlay={overlay}
         onClose={closeOverlay}
-        onUnlock={(id) => { if (unlockFurniture(id)) { showToast('家具解锁成功！'); closeOverlay(); } else showToast('数据碎片不足。'); }}
+        onUnlock={(id) => {
+          if (unlockFurniture(id)) {
+            showToast('家具解锁成功！场景已更新。');
+            closeOverlay();
+          } else {
+            showToast('数据碎片不足。');
+          }
+        }}
         shards={shards}
         collectibles={collectibles}
         profile={profile}

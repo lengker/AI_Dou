@@ -21,7 +21,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'shards', title: '数据碎片', body: '右上角金色硬币是「数据碎片」——房间里的通用货币。离线回归、翻找垃圾桶、未来小游戏等途径都能获得。', tip: '碎片用来解锁家具装饰，或在设置里消耗 30 个重构分身形象。', target: 'shards', room: 'room_working' },
   { id: 'tabs', title: '多个场景区域', body: '现在可以在「办公区」「生活区」和新增的「数据林海」之间切换。底部 Tab 会带你去不同背景，交互物品也分散在不同区域。', tip: '切换场景不会丢失小人状态或已有进度。', target: 'tabs', room: 'room_working' },
   { id: 'computer', title: '办公区 · 电脑', body: '点击工位上的电脑区域，会弹出电脑浮层，小人进入敲键盘状态。屏幕会掉落 0 和 1，还有 3% 概率获得藏品「神秘磁盘」。', tip: '正常游玩不会按真实时间自动变暗；只有本地开启低光调试时，电脑才会切到简化画面。', target: 'hotzone', hotZoneId: 'W01', room: 'room_working', switchToRoom: 'room_working' },
-  { id: 'desk', title: '办公区 · 桌面', body: '左工位桌面是可探索区域。首次点击会弹出解锁面板——攒够碎片可买「桌子咖啡杯」；解锁后再点可查看特写浮层。', tip: '家具解锁后不会一直贴在主画面上，只在点击后的浮层里出现。', target: 'hotzone', hotZoneId: 'W03', room: 'room_working' },
+  { id: 'desk', title: '办公区 · 桌面', body: '左工位桌面是可探索区域。首次点击会弹出解锁面板——攒够碎片可买「桌子咖啡杯」；解锁后再点可查看特写浮层。', tip: '家具解锁后会出现在场景对应位置，再点可查看特写。', target: 'hotzone', hotZoneId: 'W03', room: 'room_working' },
   { id: 'bookshelf', title: '办公区 · 书架与墙面', body: '书架（中央）和左侧公告板区也能点击。可分别解锁「书架杂物摆件」和「墙面霓虹贴纸」。', target: 'hotzone', hotZoneId: 'W05', room: 'room_working' },
   { id: 'go-living', title: '去生活区看看', body: '生活区有床、冰箱、街机、垃圾桶等核心互动。点击底部「生活区」Tab 切换场景，我们继续探索。', target: 'tab-living', room: 'room_working', switchToRoom: 'room_living' },
   { id: 'bed', title: '生活区 · 床', body: '点击床铺可让小人睡觉 5 分钟，并清除身上的临时状态。', tip: '长期离线回归时，小人可能会坐在床边等你。', target: 'hotzone', hotZoneId: 'L01', room: 'room_living', switchToRoom: 'room_living' },

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CoinPusher3DEngine, COIN_PUSHER_LIMITS } from '@/games/coinPusher3D';
 import { Plinko2DEngine } from '@/games/plinko2D';
-import { loadTuibiArt, TuibiArtLayer } from '@/games/tuibiSprites';
 import { vibrate } from '@/utils/sound';
 
 const SYMBOLS = ['7', '$', '★', '♥', '▣'] as const;
@@ -50,10 +49,8 @@ function checkThreeLine(grid: Grid3x3): { jackpot: boolean; anyLine: boolean } {
 
 export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
   const plinkoCanvasRef = useRef<HTMLCanvasElement>(null);
-  const artCanvasRef = useRef<HTMLCanvasElement>(null);
   const mount3dRef = useRef<HTMLDivElement>(null);
   const plinkoRef = useRef<Plinko2DEngine | null>(null);
-  const artRef = useRef<TuibiArtLayer | null>(null);
   const engine3dRef = useRef<CoinPusher3DEngine | null>(null);
   const creditsRef = useRef(COIN_PUSHER_LIMITS.INIT_CREDITS);
   const dropsRef = useRef(0);
@@ -145,23 +142,8 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
 
   useEffect(() => {
     const canvas = plinkoCanvasRef.current;
-    const artCanvas = artCanvasRef.current;
     const mount3d = mount3dRef.current;
-    if (!canvas || !artCanvas || !mount3d) return;
-
-    let syncId = 0;
-    const syncPusher = () => {
-      artRef.current?.setPusherNorm(engine3dRef.current?.getPusherNorm() ?? 0);
-      syncId = requestAnimationFrame(syncPusher);
-    };
-
-    void loadTuibiArt().then(() => {
-      if (!artCanvasRef.current) return;
-      const art = new TuibiArtLayer(artCanvasRef.current);
-      art.start();
-      artRef.current = art;
-      syncId = requestAnimationFrame(syncPusher);
-    });
+    if (!canvas || !mount3d) return;
 
     const engine3d = new CoinPusher3DEngine(mount3d, {
       onCredits: syncCredits,
@@ -188,12 +170,9 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
     plinkoRef.current = plinko;
 
     return () => {
-      cancelAnimationFrame(syncId);
       plinko.dispose();
-      artRef.current?.dispose();
       engine3d.dispose();
       plinkoRef.current = null;
-      artRef.current = null;
       engine3dRef.current = null;
     };
   }, [checkSessionEnd, runLottery3x3, syncCredits]);
@@ -219,27 +198,27 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
         ← 返回大厅
       </button>
 
+      <div className="coin-pusher-hud pixel-font">
+        <span className="hud-cyan">积分 {credits}</span>
+        <span className="hud-gold">碎片 +{shards}</span>
+        <span className="hud-dim">投币 {drops}/{COIN_PUSHER_LIMITS.MAX_DROPS}</span>
+      </div>
+
       {jackpotMode && (
         <div className="coin-jackpot-banner pixel-font">★ 投币口爆币瀑布 ★</div>
       )}
 
-      <div className="coin-pusher-cabinet">
-        <div className="coin-pusher-hud-overlay pixel-font">
-          <span className="hud-cyan">积分 {credits}</span>
-          <span className="hud-gold">碎片 +{shards}</span>
-          <span className="hud-dim">投币 {drops}/{COIN_PUSHER_LIMITS.MAX_DROPS}</span>
-        </div>
-        <canvas ref={artCanvasRef} className="coin-pusher-art-layer" aria-hidden />
+      <div className="coin-pusher-split">
         <canvas
           ref={plinkoCanvasRef}
-          className="coin-pusher-plinko-layer"
+          className="coin-plinko-canvas"
           onClick={handleDrop}
         />
-        <div ref={mount3dRef} className="coin-pusher-3d-layer" />
+        <div ref={mount3dRef} className="coin-pusher-3d-mount coin-pusher-3d-bottom" />
       </div>
 
       <p className="arcade-hint">
-        点击上方 2D 区投币 · 出币口 180° 弯道 · 图内 BONUS/推板像素动画 · 下方 3D 推币落碟
+        点击上方投币 · 投币口 180° 摆动 · BONUS 抽奖且硬币仍落台 · 下方 3D 推板落碟得分
       </p>
 
       <div className="arcade-game-actions">

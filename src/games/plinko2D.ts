@@ -1,4 +1,4 @@
-import { setupPixelCanvas, drawCoinSprite } from '@/games/pixelCanvas';
+import { setupPixelCanvas, drawPixelText, drawCoinSprite } from '@/games/pixelCanvas';
 import {
   MACHINE_W,
   PLINKO_H,
@@ -6,14 +6,12 @@ import {
   PLAY_WIDTH,
   playXToNorm,
 } from '@/games/coinPusherConfig';
-import {
-  bonusPlinkoBounds,
-  buildPlinkoCollisionGrid,
-  loadTuibiArt,
-  plinkoToImage,
-} from '@/games/tuibiSprites';
 
 export const PLINKO_W = MACHINE_W;
+/** 2D 硬币直径；与推板区间隙 = 2 枚硬币直径 */
+export const COIN_DIAMETER_2D = 15;
+export const BRIDGE_GAP_PX = COIN_DIAMETER_2D * 2;
+const DECK_COLOR = '#3a2d52';
 
 interface PlinkoCoin {
   x: number;
@@ -24,9 +22,12 @@ interface PlinkoCoin {
   id: number;
   stuckFrames: number;
   bonusHit?: boolean;
-  phase: 'chute' | 'free';
-  chuteT: number;
-  chuteExitX: number;
+}
+
+interface Peg {
+  x: number;
+  y: number;
+  r: number;
 }
 
 export interface Plinko2DCallbacks {
@@ -36,15 +37,22 @@ export interface Plinko2DCallbacks {
 
 const GRAVITY = 0.42;
 const FRICTION = 0.985;
-const COIN_R = 11;
-const LAND_Y = PLINKO_H - 5;
-const CHUTE_DURATION = 0.62;
+const PEG_R = 3.5;
+const COIN_R = COIN_DIAMETER_2D / 2;
+const ROWS = 7;
+const COLS = 6;
+const BONUS_W = 54;
+const BONUS_H = 12;
+const SLOT_SWING_SPEED = 1.25;
+const BRIDGE_TOP = PLINKO_H - BRIDGE_GAP_PX;
+const LAND_Y = PLINKO_H - 3;
 
 export class Plinko2DEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private callbacks: Plinko2DCallbacks;
   private coins: PlinkoCoin[] = [];
+  private pegs: Peg[] = [];
   private nextId = 0;
   private animId = 0;
   private disposed = false;
@@ -52,18 +60,14 @@ export class Plinko2DEngine {
   private jackpotLeft = 0;
   private jackpotTimer = 0;
   private time = 0;
-  private collision: Uint8Array = new Uint8Array(0);
-  private artReady = false;
+  private slotAngle = 0;
+  private bonusCenterX = PLINKO_W / 2;
 
   constructor(canvas: HTMLCanvasElement, callbacks: Plinko2DCallbacks) {
     this.canvas = canvas;
     this.callbacks = callbacks;
     this.ctx = setupPixelCanvas(canvas, PLINKO_W, PLINKO_H);
-    void loadTuibiArt().then(() => {
-      if (this.disposed) return;
-      this.collision = buildPlinkoCollisionGrid(PLINKO_W, PLINKO_H);
-      this.artReady = true;
-    });
+    this.buildPegs();
     this.loop();
   }
 
@@ -75,26 +79,54 @@ export class Plinko2DEngine {
     return PLINKO_W - PLAY_MARGIN;
   }
 
-  private lerp(a: number, b: number, t: number) {
-    return a + (b - a) * t;
+  /** 2D 投币口沿 180° 弧线左右摆动 */
+  private slotX() {
+    const travel = PLAY_WIDTH / 2 - 22;
+    return PLINKO_W / 2 + Math.sin(this.slotAngle) * travel;
   }
 
-  dropCoin(x = PLINKO_W / 2) {
-    const left = this.playLeft() + COIN_R;
-    const right = this.playRight() - COIN_R;
-    const exitX = Math.max(left, Math.min(right, x + (Math.random() - 0.5) * PLAY_WIDTH * 0.55));
+  private buildPegs() {
+    const left = this.playLeft();
+    const right = this.playRight();
+    const top = 40;
+    const bottom = BRIDGE_TOP - 22;
+    const rowGap = (bottom - top) / (ROWS - 1);
+    const colGap = (right - left - 16) / (COLS - 1);
+
+    for (let r = 0; r < ROWS; r++) {
+      const offset = r % 2 === 0 ? 0 : colGap / 2;
+      const colsThisRow = r === 0 ? COLS - 1 : COLS;
+      for (let c = 0; c < colsThisRow; c++) {
+        const x = left + 8 + c * colGap + offset;
+        if (x < left + 10 || x > right - 10) continue;
+        if (r === 0 && Math.abs(x - PLINKO_W / 2) < 16) continue;
+        this.pegs.push({ x, y: top + r * rowGap, r: PEG_R });
+      }
+    }
+  }
+
+  private bonusBounds() {
+    const y = BRIDGE_TOP - 18;
+    const half = BONUS_W / 2;
+    return {
+      x0: this.bonusCenterX - half,
+      x1: this.bonusCenterX + half,
+      y0: y,
+      y1: y + BONUS_H,
+    };
+  }
+
+  dropCoin() {
+    const sx = this.slotX();
     this.coins.push({
-      x: PLINKO_W / 2,
-      y: 6,
-      vx: 0,
-      vy: 0,
+      x: sx,
+      y: 12,
+      vx: (Math.random() - 0.5) * 0.2,
+      vy: 0.14,
       r: COIN_R,
       id: this.nextId++,
       stuckFrames: 0,
       bonusHit: false,
-      phase: 'chute',
-      chuteT: 0,
-      chuteExitX: exitX,
     });
   }
 
@@ -111,101 +143,50 @@ export class Plinko2DEngine {
     return this.jackpotActive;
   }
 
-  private sampleSolid(x: number, y: number): boolean {
-    if (!this.artReady || this.collision.length === 0) return false;
-    const ix = Math.floor(x);
-    const iy = Math.floor(y);
-    if (ix < 0 || iy < 0 || ix >= PLINKO_W || iy >= PLINKO_H) return ix < 0 || ix >= PLINKO_W;
-    return this.collision[iy * PLINKO_W + ix] === 1;
-  }
-
-  private resolveImageCollision(c: PlinkoCoin) {
-    const bonus = bonusPlinkoBounds(this.time, PLINKO_W, PLINKO_H);
-    const samples = [
-      [c.x, c.y],
-      [c.x - c.r * 0.65, c.y],
-      [c.x + c.r * 0.65, c.y],
-      [c.x, c.y - c.r * 0.5],
-      [c.x, c.y + c.r * 0.5],
-    ];
-
-    for (const [sx, sy] of samples) {
-      const inBonus =
-        sx >= bonus.x0 && sx <= bonus.x1 && sy >= bonus.y0 && sy <= bonus.y1;
-      if (inBonus) continue;
-
-      if (this.sampleSolid(sx, sy)) {
-        const { ix, iy } = plinkoToImage(sx, sy, PLINKO_W, PLINKO_H);
-        const probe = 1.2;
-        const left = this.sampleSolid(sx - probe, sy);
-        const right = this.sampleSolid(sx + probe, sy);
-        const up = this.sampleSolid(sx, sy - probe);
-        const down = this.sampleSolid(sx, sy + probe);
-
-        if (!left || !right) {
-          c.x += left ? probe * 0.9 : -probe * 0.9;
-          c.vx *= -0.28;
-          c.vx += left ? 0.35 : -0.35;
-        } else if (!up || !down) {
-          c.y += up ? probe * 0.9 : -probe * 0.9;
-          c.vy *= -0.25;
-          c.vy += up ? 0.15 : -0.04;
-        } else {
-          c.vy *= -0.2;
-          c.y -= 1.5;
-        }
-        c.vy += 0.05;
-        void ix;
-        void iy;
-        return;
-      }
+  private nearbyPegs(c: PlinkoCoin): Peg[] {
+    const out: Peg[] = [];
+    for (const peg of this.pegs) {
+      if (Math.abs(peg.x - c.x) < 24 && Math.abs(peg.y - c.y) < 22) out.push(peg);
     }
+    return out;
   }
 
-  private stepChute(c: PlinkoCoin, dt: number) {
-    c.chuteT += dt;
-    const t = c.chuteT / CHUTE_DURATION;
-    const slotX = PLINKO_W / 2;
+  private resolvePeg(c: PlinkoCoin, peg: Peg) {
+    const dx = c.x - peg.x;
+    const dy = c.y - peg.y;
+    const dist = Math.hypot(dx, dy) || 0.01;
+    const minD = c.r + peg.r - 0.5;
+    if (dist >= minD) return;
 
-    if (t < 0.2) {
-      const u = t / 0.2;
-      c.x = slotX;
-      c.y = this.lerp(6, 22, u);
-    } else if (t < 0.45) {
-      const u = (t - 0.2) / 0.25;
-      c.x = this.lerp(slotX, c.chuteExitX, u);
-      c.y = this.lerp(22, 28, u);
-    } else if (t < 0.65) {
-      const u = (t - 0.45) / 0.2;
-      c.x = this.lerp(c.chuteExitX, slotX, u);
-      c.y = this.lerp(28, 34, u);
-    } else if (t < 1) {
-      const u = (t - 0.65) / 0.35;
-      c.x = this.lerp(slotX, c.chuteExitX, u * u);
-      c.y = this.lerp(34, 48, u);
-    } else {
-      c.phase = 'free';
-      c.vy = 0.18;
-      c.vx = (c.chuteExitX - slotX) * 0.012 + (Math.random() - 0.5) * 0.25;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = minD - dist;
+    c.x += nx * overlap * 1.05;
+    c.y += ny * overlap * 1.05;
+
+    const dot = c.vx * nx + c.vy * ny;
+    if (dot < 0) {
+      const rest = 0.36;
+      c.vx -= (1 + rest) * dot * nx;
+      c.vy -= (1 + rest) * dot * ny;
     }
+    c.vx += nx * 0.32;
+    c.vy += Math.abs(ny) * 0.07 + 0.05;
   }
 
+  /** 经过 BONUS 只触发抽奖，硬币继续下落进 3D */
   private tryBonusHit(c: PlinkoCoin) {
-    if (c.bonusHit || c.phase === 'chute') return;
-    const b = bonusPlinkoBounds(this.time, PLINKO_W, PLINKO_H);
-    if (c.y + c.r < b.y0 || c.y - c.r > b.y1) return;
-    if (c.x >= b.x0 - c.r * 0.3 && c.x <= b.x1 + c.r * 0.3) {
+    if (c.bonusHit) return;
+    const b = this.bonusBounds();
+    if (c.y + c.r < b.y0) return;
+    if (c.y - c.r > b.y1 + 8) return;
+    if (c.x >= b.x0 - c.r * 0.4 && c.x <= b.x1 + c.r * 0.4) {
       c.bonusHit = true;
       this.callbacks.onBonus();
     }
   }
 
-  private stepCoin(c: PlinkoCoin, dt: number) {
-    if (c.phase === 'chute') {
-      this.stepChute(c, dt);
-      return false;
-    }
-
+  private stepCoin(c: PlinkoCoin) {
     c.vy += GRAVITY;
     c.vx *= FRICTION;
     c.vy *= FRICTION;
@@ -217,10 +198,13 @@ export class Plinko2DEngine {
     if (c.x < left) { c.x = left; c.vx = Math.abs(c.vx) * 0.3; }
     if (c.x > right) { c.x = right; c.vx = -Math.abs(c.vx) * 0.3; }
 
-    this.resolveImageCollision(c);
+    if (c.y < BRIDGE_TOP) {
+      for (const peg of this.nearbyPegs(c)) this.resolvePeg(c, peg);
+    }
+
     this.tryBonusHit(c);
 
-    if (Math.abs(c.vx) < 0.05 && c.vy < 0.22) {
+    if (Math.abs(c.vx) < 0.05 && c.vy < 0.22 && c.y < BRIDGE_TOP) {
       c.stuckFrames += 1;
       c.vy += 0.1;
       c.vx += (Math.random() - 0.5) * 0.2;
@@ -242,27 +226,102 @@ export class Plinko2DEngine {
 
   private step(dt: number) {
     this.time += dt;
+    this.slotAngle += dt * SLOT_SWING_SPEED;
+    const travel = PLAY_WIDTH / 2 - BONUS_W / 2 - 10;
+    this.bonusCenterX = PLINKO_W / 2 + Math.sin(this.time * 1.6) * travel;
 
     if (this.jackpotActive) {
       this.jackpotTimer += dt;
       while (this.jackpotLeft > 0 && this.jackpotTimer >= this.jackpotInterval) {
         this.jackpotTimer -= this.jackpotInterval;
         this.jackpotLeft -= 1;
-        this.dropCoin(PLINKO_W / 2 + (Math.random() - 0.5) * PLAY_WIDTH * 0.5);
+        this.dropCoin();
       }
       if (this.jackpotLeft <= 0) this.jackpotActive = false;
     }
 
     for (let i = this.coins.length - 1; i >= 0; i--) {
-      if (this.stepCoin(this.coins[i], dt)) {
+      if (this.stepCoin(this.coins[i])) {
         this.coins.splice(i, 1);
       }
     }
   }
 
+  /** 2D 摆动投币口 + 示意弧线 */
+  private drawMovingSlot() {
+    const ctx = this.ctx;
+    const cx = PLINKO_W / 2;
+    const sx = this.slotX();
+
+    ctx.strokeStyle = 'rgba(0, 255, 204, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, 10, PLAY_WIDTH / 2 - 22, 0, Math.PI);
+    ctx.stroke();
+
+    ctx.fillStyle = '#00ffcc';
+    ctx.fillRect(sx - 4, 8, 8, 8);
+    ctx.strokeStyle = '#92efe7';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx - 4, 8, 8, 8);
+  }
+
+  /** 底部衔接带：与 3D 台面同色，三股落币道贯通 */
+  private drawBridgeConnector() {
+    const ctx = this.ctx;
+    const left = this.playLeft();
+    const b = this.bonusBounds();
+
+    ctx.fillStyle = DECK_COLOR;
+    ctx.fillRect(left, BRIDGE_TOP, PLAY_WIDTH, BRIDGE_GAP_PX);
+
+    ctx.fillStyle = '#2a1a40';
+    const lipH = 6;
+    ctx.fillRect(left, BRIDGE_TOP, b.x0 - left - 2, lipH);
+    ctx.fillRect(b.x1 + 2, BRIDGE_TOP, left + PLAY_WIDTH - b.x1 - 2, lipH);
+
+    const pulse = 0.65 + Math.sin(this.time * 4) * 0.35;
+    ctx.fillStyle = `rgba(255, 136, 204, ${0.28 + pulse * 0.18})`;
+    ctx.fillRect(b.x0, BRIDGE_TOP - 2, BONUS_W, BONUS_H + 4);
+    ctx.strokeStyle = '#ff88cc';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x0, BRIDGE_TOP - 2, BONUS_W, BONUS_H + 4);
+    drawPixelText(ctx, 'BONUS', this.bonusCenterX, BRIDGE_TOP + BONUS_H - 2, '#ff88cc', 6);
+
+    ctx.strokeStyle = '#4a3d62';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const y = BRIDGE_TOP + (BRIDGE_GAP_PX * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(left + 6, y);
+      ctx.lineTo(left + PLAY_WIDTH - 6, y);
+      ctx.stroke();
+    }
+  }
+
   private draw() {
     const ctx = this.ctx;
-    ctx.clearRect(0, 0, PLINKO_W, PLINKO_H);
+    const left = this.playLeft();
+
+    ctx.fillStyle = '#1a1028';
+    ctx.fillRect(0, 0, PLINKO_W, PLINKO_H);
+
+    ctx.fillStyle = '#2a1a40';
+    ctx.fillRect(left, 6, PLAY_WIDTH, BRIDGE_TOP - 6);
+    ctx.strokeStyle = '#00ffcc55';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(left, 6, PLAY_WIDTH, BRIDGE_TOP - 6);
+
+    drawPixelText(ctx, 'PLINKO 投币口', PLINKO_W / 2, 22, '#00ffcc', 7);
+    this.drawMovingSlot();
+
+    ctx.fillStyle = '#556677';
+    for (const peg of this.pegs) {
+      ctx.fillRect(peg.x - peg.r, peg.y - peg.r, peg.r * 2, peg.r * 2);
+    }
+
+    this.drawBridgeConnector();
+
     for (const c of this.coins) drawCoinSprite(ctx, c.x, c.y, c.r);
   }
 

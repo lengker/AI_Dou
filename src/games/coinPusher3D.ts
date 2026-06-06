@@ -8,12 +8,13 @@ const PALETTE = {
   wall: 0x4a3568,
   platform: 0x2a1a3a,
   deck: 0x3a2d52,
+  pusher: 0x8aa4be,
   chute: 0x1a1028,
   saucer: 0x2a1838,
 };
 
 const COIN_RADIUS = 0.34;
-const COIN_THICK = 0.068;
+const COIN_THICK = 0.052;
 const COIN_HALF_Y = COIN_THICK / 2;
 const COIN_MASS = 1.0;
 const PLATFORM_TOP_Y = 0;
@@ -28,9 +29,11 @@ const BACK_INNER_Z = -PLATFORM_D / 2 + 0.14;
 const PUSHER_FRONT_MIN = BACK_INNER_Z + 0.28;
 const PUSHER_FRONT_MAX = BACK_INNER_Z + 1.38;
 const PUSHER_THICKNESS = 0.07;
+const PUSHER_VISUAL_H = 0.034;
 const PUSHER_HALF_W = PLATFORM_W / 2 - 0.04;
 const PUSHER_SPEED = 0.85;
 const PUSHER_PHYSICS_Y = PLATFORM_TOP_Y - PUSHER_THICKNESS / 2 + 0.001;
+const PUSHER_VISUAL_Y = PLATFORM_TOP_Y + PUSHER_VISUAL_H / 2 + 0.004;
 const SEED_WARMUP = 1.0;
 const DROP_Z_MIN = BACK_INNER_Z + 0.12;
 const DROP_Z_MAX = BACK_INNER_Z + 0.42;
@@ -63,6 +66,8 @@ export class CoinPusher3DEngine {
   private pusherMaterial!: CANNON.Material;
   private coins: CoinEntry[] = [];
   private pusherBody!: CANNON.Body;
+  private pusherMesh!: THREE.Mesh;
+  private pusherMat!: THREE.MeshStandardMaterial;
   private pusherShape!: CANNON.Box;
   private lastPusherDepth = 0;
   private animId = 0;
@@ -85,20 +90,20 @@ export class CoinPusher3DEngine {
     });
   }
 
-  /** 平台后边沿对齐 2D 区，同时露出前沿出币口 */
+  /** 平台后边沿对齐 2D 落币衔接缝，前沿仍露出出币口 */
   private fitCamera(w: number, h: number) {
     const aspect = w / Math.max(h, 1);
-    const camY = 4.65;
-    const camZ = 7.1;
-    const lookY = 0.02;
-    const lookZ = 0.55;
+    const camY = 4.72;
+    const camZ = 6.95;
+    const lookY = 0.015;
+    const lookZ = 0.42;
     const targetHalfW = PLATFORM_W / 2 + 0.04;
     const planeZ = BACK_INNER_Z;
     const dz = camZ - planeZ;
     const dy = camY - lookY;
     const dist = Math.sqrt(dy * dy + dz * dz);
-    const vFovRad = 2 * Math.atan(targetHalfW / (dist * aspect)) * 1.06;
-    const vFov = THREE.MathUtils.clamp((vFovRad * 180) / Math.PI, 40, 58);
+    const vFovRad = 2 * Math.atan(targetHalfW / (dist * aspect)) * 1.02;
+    const vFov = THREE.MathUtils.clamp((vFovRad * 180) / Math.PI, 38, 54);
 
     if (!this.camera) {
       this.camera = new THREE.PerspectiveCamera(vFov, aspect, 0.1, 80);
@@ -132,19 +137,22 @@ export class CoinPusher3DEngine {
     }
 
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(PALETTE.bg);
+    this.scene.fog = new THREE.Fog(PALETTE.bg, 14, 24);
     this.fitCamera(w, h);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    this.renderer.setClearColor(0x000000, 0);
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.HemisphereLight(0xccc0ff, 0x1a1028, 0.58));
     const key = new THREE.DirectionalLight(0xffffff, 0.95);
     key.position.set(3, 11, 6);
-    key.castShadow = false;
+    key.castShadow = true;
+    key.shadow.mapSize.set(512, 512);
     this.scene.add(key);
 
     this.world = new CANNON.World();
@@ -187,46 +195,103 @@ export class CoinPusher3DEngine {
     this.animate();
   }
 
-  private addCollider(shape: CANNON.Shape, x: number, y: number, z: number, mat?: CANNON.Material) {
+  private addStatic(mesh: THREE.Mesh, shape: CANNON.Shape, x: number, y: number, z: number, mat?: CANNON.Material) {
     const body = new CANNON.Body({ mass: 0, material: mat });
     body.addShape(shape);
     body.position.set(x, y, z);
     this.world.addBody(body);
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
   }
 
-  /** 仅物理碰撞，机台外观由 tuibi.png 背景提供 */
   private buildMachine() {
-    this.addCollider(
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W, 0.18, PLATFORM_D),
+      this.surfaceMat(PALETTE.platform, 0.05),
+    );
+    this.addStatic(
+      base,
       new CANNON.Box(new CANNON.Vec3(PLATFORM_W / 2, 0.09, PLATFORM_D / 2)),
       0, -0.09, PLATFORM_CENTER_Z,
       this.platformMaterial,
     );
 
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W, 0.025, PLATFORM_D),
+      this.surfaceMat(PALETTE.deck, 0.06),
+    );
+    deck.position.set(0, PLATFORM_TOP_Y - 0.0125, PLATFORM_CENTER_Z);
+    deck.receiveShadow = true;
+    this.scene.add(deck);
+
     const lipW = (PLATFORM_W - 0.24) / 2;
-    this.addCollider(
+    const lipMat = this.surfaceMat(PALETTE.gold, 0.22);
+    const lipL = new THREE.Mesh(new THREE.BoxGeometry(lipW, 0.055, 0.09), lipMat);
+    this.addStatic(
+      lipL,
       new CANNON.Box(new CANNON.Vec3(lipW / 2, 0.0275, 0.045)),
       -(lipW / 2 + 0.1), 0.0275, FRONT_Z,
       this.platformMaterial,
     );
-    this.addCollider(
+    const lipR = new THREE.Mesh(new THREE.BoxGeometry(lipW, 0.055, 0.09), lipMat);
+    this.addStatic(
+      lipR,
       new CANNON.Box(new CANNON.Vec3(lipW / 2, 0.0275, 0.045)),
       lipW / 2 + 0.1, 0.0275, FRONT_Z,
       this.platformMaterial,
     );
 
+    const chute = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.28, 0.22, 0.28),
+      this.surfaceMat(PALETTE.chute, 0.03),
+    );
+    chute.position.set(0, -0.08, FRONT_Z + 0.18);
+    this.scene.add(chute);
+
+    const saucer = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.36, 0.1, 0.42),
+      this.surfaceMat(PALETTE.saucer, 0.15),
+    );
+    saucer.position.set(0, -0.12, SAUCER_Z);
+    this.scene.add(saucer);
+
+    const saucerGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.5, 0.04, 0.28),
+      new THREE.MeshStandardMaterial({
+        color: PALETTE.gold,
+        emissive: PALETTE.gold,
+        emissiveIntensity: 0.45,
+        roughness: 0.5,
+      }),
+    );
+    saucerGlow.position.set(0, -0.06, SAUCER_Z);
+    this.scene.add(saucerGlow);
+
     const wallH = 0.52;
-    this.addCollider(
+    const wallMat = this.surfaceMat(PALETTE.wall, 0.04);
+    const wallL = new THREE.Mesh(new THREE.BoxGeometry(0.1, wallH, PLATFORM_D), wallMat);
+    this.addStatic(
+      wallL,
       new CANNON.Box(new CANNON.Vec3(0.05, wallH / 2, PLATFORM_D / 2)),
       -PLATFORM_W / 2 - 0.05, wallH / 2 - 0.08, PLATFORM_CENTER_Z,
     );
-    this.addCollider(
+    const wallR = new THREE.Mesh(new THREE.BoxGeometry(0.1, wallH, PLATFORM_D), wallMat);
+    this.addStatic(
+      wallR,
       new CANNON.Box(new CANNON.Vec3(0.05, wallH / 2, PLATFORM_D / 2)),
       PLATFORM_W / 2 + 0.05, wallH / 2 - 0.08, PLATFORM_CENTER_Z,
     );
-    this.addCollider(
+
+    const back = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W, 0.32, 0.12),
+      this.surfaceMat(PALETTE.wall, 0.05),
+    );
+    this.addStatic(
+      back,
       new CANNON.Box(new CANNON.Vec3(PLATFORM_W / 2, 0.16, 0.06)),
       0, 0.16, -PLATFORM_D / 2 + 0.08,
     );
+
   }
 
   private buildPusher() {
@@ -238,10 +303,20 @@ export class CoinPusher3DEngine {
     this.pusherShape = new CANNON.Box(new CANNON.Vec3(PUSHER_HALF_W, PUSHER_THICKNESS / 2, 0.14));
     this.pusherBody.addShape(this.pusherShape);
     this.world.addBody(this.pusherBody);
+
+    this.pusherMat = this.surfaceMat(PALETTE.pusher, 0.18);
+    this.pusherMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.08, PUSHER_VISUAL_H, 1),
+      this.pusherMat,
+    );
+    this.pusherMesh.castShadow = false;
+    this.pusherMesh.receiveShadow = false;
+    this.pusherMesh.renderOrder = 1;
+    this.scene.add(this.pusherMesh);
     this.syncPusher(PUSHER_FRONT_MIN);
   }
 
-  /** 仅物理推板；外观由 tuibi.png 像素层驱动 */
+  /** 推板视觉用 scale，避免每帧重建几何体产生横纹 */
   private syncPusher(frontZ: number) {
     const backZ = BACK_INNER_Z;
     const depth = Math.max(0.14, frontZ - backZ);
@@ -254,12 +329,10 @@ export class CoinPusher3DEngine {
       this.lastPusherDepth = depth;
     }
     this.pusherBody.position.set(0, PUSHER_PHYSICS_Y, centerZ);
-    this.pusherFrontZ = frontZ;
-  }
 
-  /** 0=收回, 1=伸出 — 供 tuibi 推板像素动画同步 */
-  getPusherNorm() {
-    return (this.pusherFrontZ - PUSHER_FRONT_MIN) / (PUSHER_FRONT_MAX - PUSHER_FRONT_MIN);
+    this.pusherMesh.scale.set(1, 1, depth);
+    this.pusherMesh.position.set(0, PUSHER_VISUAL_Y, centerZ);
+    this.pusherFrontZ = frontZ;
   }
 
   private targetPusherFrontZ(t: number) {
@@ -287,8 +360,8 @@ export class CoinPusher3DEngine {
       new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, COIN_THICK, 14),
       this.surfaceMat(PALETTE.gold, 0.22),
     );
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     mesh.renderOrder = 3;
     this.scene.add(mesh);
     const entry: CoinEntry = { body, mesh, caught: false };
@@ -410,8 +483,8 @@ export class CoinPusher3DEngine {
       const y0 = entry.body.position.y;
       entry.mesh.position.set(
         entry.body.position.x,
-        THREE.MathUtils.lerp(y0, -0.22, t * t),
-        THREE.MathUtils.lerp(entry.body.position.z, FRONT_Z + 0.45, t),
+        THREE.MathUtils.lerp(y0, -0.14, t * t),
+        THREE.MathUtils.lerp(entry.body.position.z, SAUCER_Z, t),
       );
       entry.mesh.rotation.x += dt * 6;
       if (t >= 1) {
@@ -507,6 +580,8 @@ export class CoinPusher3DEngine {
       if (!entry.falling) this.world.removeBody(entry.body);
     }
     this.coins = [];
+    this.pusherMesh.geometry.dispose();
+    this.pusherMat.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
