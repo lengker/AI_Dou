@@ -151,6 +151,41 @@ function isForcedSleepActive(tempBuff: GameState['tempBuff']): boolean {
   return !!tempBuff.forcedSleep && Date.now() < tempBuff.forcedSleep.expiresAt;
 }
 
+function normalizeUnlockedFeatures(state: GameState): FeatureUnlock[] {
+  let unlockedFeatures = [...(state.unlockedFeatures ?? [])];
+  const completedHints = state.completedHints ?? [];
+  const discoveredZones = state.discoveredZones ?? [];
+  const forestAnimals = state.forestAnimals ?? [];
+
+  const hasArcadeProgress = forestAnimals.length >= 3
+    || state.mainlineStep === 'arcade'
+    || state.mainlineStep === 'claw'
+    || state.mainlineStep === 'free'
+    || discoveredZones.includes('L05')
+    || discoveredZones.includes('F05')
+    || completedHints.includes('arcade_entry')
+    || completedHints.includes('arcade_coin')
+    || completedHints.includes('arcade_claw')
+    || state.activeHint === 'arcade_entry'
+    || state.activeHint === 'arcade_coin'
+    || state.activeHint === 'arcade_claw';
+
+  const hasClawProgress = state.mainlineStep === 'claw'
+    || state.mainlineStep === 'free'
+    || completedHints.includes('arcade_claw')
+    || state.activeHint === 'arcade_claw';
+
+  if (hasArcadeProgress) {
+    unlockedFeatures = addUnique(addUnique(unlockedFeatures, 'arcade'), 'coin');
+  }
+
+  if (hasClawProgress) {
+    unlockedFeatures = addUnique(addUnique(addUnique(unlockedFeatures, 'arcade'), 'coin'), 'claw');
+  }
+
+  return unlockedFeatures;
+}
+
 function ensureDaily(daily: GameState['daily']): GameState['daily'] {
   const today = todayKey();
   if (daily.date === today) return daily;
@@ -219,6 +254,7 @@ export const useGameStore = create<GameState & GameActions>()(
         const daily = ensureDaily(state.daily);
         const now = Date.now();
         const lastOpenAt = Number(localStorage.getItem(LAST_OPEN_KEY) || 0) || null;
+        const unlockedFeatures = normalizeUnlockedFeatures(state);
         const progressedSave = (state.discoveredZones?.length ?? 0) > 0
           || (state.completedHints?.length ?? 0) > 0
           || (state.unlockedRooms?.length ?? 1) > 1
@@ -257,7 +293,7 @@ export const useGameStore = create<GameState & GameActions>()(
           discoveredZones: state.discoveredZones ?? [],
           forestAnimals: state.forestAnimals ?? [],
           unlockedRooms: state.unlockedRooms,
-          unlockedFeatures: state.unlockedFeatures,
+          unlockedFeatures,
           mainlineStep: state.mainlineStep,
           storyDialog: state.storyDialog ?? null,
           tutorialActive: progressedSave ? false : (state.tutorialActive ?? false),
