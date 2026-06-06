@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { HOT_ZONES, ROOM_BACKGROUNDS, PET_STAND_POINTS } from '@/data/hotzones';
+import { HOT_ZONES, ROOM_BACKGROUNDS, PET_STAND_POINTS, ROOM_TABS } from '@/data/hotzones';
 import { getCollectible } from '@/data/collectibles';
 import { useGameStore, finalizeComputerInteraction } from '@/store/gameStore';
 import { isMidnightMode } from '@/utils/time';
@@ -20,6 +20,7 @@ import { PetChatPanel } from '@/components/PetChatPanel';
 import { InteractionOverlay } from '@/components/InteractionOverlay';
 
 interface ActiveOverlay { type: string; payload?: Record<string, unknown>; }
+const PET_SIZE_PX = 64;
 
 export function RoomScreen() {
   const currentRoom = useGameStore((s) => s.currentRoom);
@@ -64,10 +65,38 @@ export function RoomScreen() {
   const [errorPopup, setErrorPopup] = useState(false);
   const [fallingChars, setFallingChars] = useState<{ char: string; id: number }[]>([]);
   const [petPos, setPetPos] = useState<{ x: number; y: number }>(PET_STAND_POINTS[currentRoom]);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [slideAnim, setSlideAnim] = useState('');
   const charCounter = useRef(0);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const midnight = isMidnightMode();
   const aiOn = isAiConfigured();
+
+  const clampPetPos = useCallback((pos: { x: number; y: number }) => {
+    if (!stageSize.width || !stageSize.height) return pos;
+    const maxX = Math.max(0, 100 - (PET_SIZE_PX / stageSize.width) * 100);
+    const maxY = Math.max(0, 100 - (PET_SIZE_PX / stageSize.height) * 100);
+    return {
+      x: Math.min(Math.max(pos.x, 0), maxX),
+      y: Math.min(Math.max(pos.y, 0), maxY),
+    };
+  }, [stageSize.height, stageSize.width]);
+
+  useEffect(() => {
+    if (!stageRef.current) return;
+    const updateSize = () => {
+      if (!stageRef.current) return;
+      setStageSize({
+        width: stageRef.current.clientWidth,
+        height: stageRef.current.clientHeight,
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (tutorialActive) return;
@@ -81,15 +110,18 @@ export function RoomScreen() {
   }, [triggerRandomEventOnEnter, setRandomEventMessage, profile, tutorialActive, aiOn]);
 
   useEffect(() => { const t = setInterval(() => tickPetState(), 45000); return () => clearInterval(t); }, [tickPetState]);
-  useEffect(() => { setPetPos(PET_STAND_POINTS[currentRoom]); }, [currentRoom]);
+  useEffect(() => { setPetPos(clampPetPos(PET_STAND_POINTS[currentRoom])); }, [currentRoom, clampPetPos]);
   useEffect(() => {
     if (petState === 'S4') {
-      const iv = setInterval(() => setPetPos({ x: 20 + Math.random() * 60, y: 55 + Math.random() * 25 }), 2000);
+      const iv = setInterval(() => {
+        setPetPos(clampPetPos({ x: 20 + Math.random() * 60, y: 55 + Math.random() * 25 }));
+      }, 2000);
       return () => clearInterval(iv);
     }
-    setPetPos(PET_STAND_POINTS[currentRoom]);
-  }, [petState, currentRoom]);
-  useEffect(() => { if (missyState) setPetPos({ x: 18, y: 42 }); }, [missyState]);
+    setPetPos(clampPetPos(PET_STAND_POINTS[currentRoom]));
+  }, [petState, currentRoom, clampPetPos]);
+  useEffect(() => { if (missyState) setPetPos(clampPetPos({ x: 18, y: 42 })); }, [missyState, clampPetPos]);
+  useEffect(() => { setPetPos((prev) => clampPetPos(prev)); }, [clampPetPos]);
   useEffect(() => {
     if (overlay?.type === 'computer') {
       const iv = setInterval(() => {
@@ -105,12 +137,16 @@ export function RoomScreen() {
 
   const onZoneClick = (zoneId: string, decorative?: boolean) => {
     if (tutorialActive) return;
+    const zone = HOT_ZONES.find((z) => z.id === zoneId);
     if (decorative) {
+      if (zone?.room === 'outdoor_forest' && zone.decorativeMessage) {
+        setOverlay({ type: 'desktop_bubble', payload: { message: zone.decorativeMessage, zoneId } });
+        return;
+      }
       const kind = zoneId === 'L07' ? 'window' : 'plant';
       setOverlay({ type: 'ai_whisper', payload: { kind } });
       return;
     }
-    const zone = HOT_ZONES.find((z) => z.id === zoneId);
     if (zone?.disabledInMidnight && midnight) return;
     const result = handleHotZone(zoneId);
     if (result) setOverlay(result);
@@ -124,7 +160,9 @@ export function RoomScreen() {
 
   const switchRoomWithAnim = (room: typeof currentRoom) => {
     if (room === currentRoom || !debounceAction('room-tab', 500)) return;
-    setSlideAnim(room === 'room_living' ? 'slide-left' : 'slide-right');
+    const currentIndex = ROOM_TABS.findIndex((tab) => tab.id === currentRoom);
+    const nextIndex = ROOM_TABS.findIndex((tab) => tab.id === room);
+    setSlideAnim(nextIndex > currentIndex ? 'slide-left' : 'slide-right');
     switchRoom(room);
     setTimeout(() => setSlideAnim(''), 300);
   };
@@ -133,45 +171,47 @@ export function RoomScreen() {
 
   return (
     <div className="room-scene">
-      <img src={ROOM_BACKGROUNDS[currentRoom]} alt="room" className={`room-bg ${midnight ? 'midnight' : ''} ${slideAnim}`} />
+      <div className="room-stage" ref={stageRef}>
+        <img src={ROOM_BACKGROUNDS[currentRoom]} alt="room" className={`room-bg ${midnight ? 'midnight' : ''} ${slideAnim}`} />
 
-      <div className="hotzone-layer">
-        {zones.map((zone) => {
-          const disabled = !!(zone.disabledInMidnight && midnight);
-          if (zone.id === 'L01' && missyState) return null;
-          return (
-            <button key={zone.id} className={`hotzone ${disabled ? 'disabled' : ''}`}
-              style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%` }}
-              onClick={() => onZoneClick(zone.id, zone.decorative)} aria-label={zone.label} />
-          );
-        })}
-      </div>
-
-      <div className="pet-layer" style={{ left: `${petPos.x}%`, top: `${petPos.y}%` }}
-        onClick={() => {
-          if (tutorialActive) return;
-          const r = handlePetClick();
-          if (!r) return;
-          if (r.type === 'wake_confirm') setWakeConfirm(true);
-          else if (r.type === 'missy_complete') { setBubble(r.message ?? ''); setTimeout(() => setBubble(null), 5000); }
-          else if (r.type === 'easter_egg') { setErrorPopup(true); showToast('成就解锁：异常抛出者'); }
-          else if (r.message) { setBubble(r.message); setTimeout(() => setBubble(null), 3000); }
-        }}>
-        <div className={`pet-sprite ${petState === 'S5' ? 'glitching' : ''}`}>
-          <img src="/DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
-            filter: profile ? `${getSkinFilter(profile.appearance.skinTone)} ${getHairFilter(profile.appearance.hairColor)}` : undefined }} />
-          {missyState && <img src="/DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
-          {petState === 'S3' && !missyState && <span className="pet-zzz">Zzz</span>}
-          {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="/DOU/images/ui/heart.png" alt="heart" />)}</div>}
+        <div className="hotzone-layer">
+          {zones.map((zone) => {
+            const disabled = !!(zone.disabledInMidnight && midnight);
+            if (zone.id === 'L01' && missyState) return null;
+            return (
+              <button key={zone.id} className={`hotzone ${disabled ? 'disabled' : ''}`}
+                style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%` }}
+                onClick={() => onZoneClick(zone.id, zone.decorative)} aria-label={zone.label} />
+            );
+          })}
         </div>
-        {catUnlocked && <img src="/DOU/images/pet/cat.png" alt="cat" className="pet-cat" />}
-      </div>
 
-      {(showRandomEvent || bubble) && (
-        <div className="bubble-text" style={{ top: `${petPos.y - 8}%`, left: `${petPos.x}%` }}>
-          {showRandomEvent ? <TypewriterText text={showRandomEvent} speed={30} /> : bubble}
+        <div className="pet-layer" style={{ left: `${petPos.x}%`, top: `${petPos.y}%` }}
+          onClick={() => {
+            if (tutorialActive) return;
+            const r = handlePetClick();
+            if (!r) return;
+            if (r.type === 'wake_confirm') setWakeConfirm(true);
+            else if (r.type === 'missy_complete') { setBubble(r.message ?? ''); setTimeout(() => setBubble(null), 5000); }
+            else if (r.type === 'easter_egg') { setErrorPopup(true); showToast('成就解锁：异常抛出者'); }
+            else if (r.message) { setBubble(r.message); setTimeout(() => setBubble(null), 3000); }
+          }}>
+          <div className={`pet-sprite ${petState === 'S5' ? 'glitching' : ''}`}>
+            <img src="/DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
+              filter: profile ? `${getSkinFilter(profile.appearance.skinTone)} ${getHairFilter(profile.appearance.hairColor)}` : undefined }} />
+            {missyState && <img src="/DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
+            {petState === 'S3' && !missyState && <span className="pet-zzz">Zzz</span>}
+            {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="/DOU/images/ui/heart.png" alt="heart" />)}</div>}
+          </div>
+          {catUnlocked && <img src="/DOU/images/pet/cat.png" alt="cat" className="pet-cat" />}
         </div>
-      )}
+
+        {(showRandomEvent || bubble) && (
+          <div className="bubble-text" style={{ top: `${petPos.y - 8}%`, left: `${petPos.x}%` }}>
+            {showRandomEvent ? <TypewriterText text={showRandomEvent} speed={30} /> : bubble}
+          </div>
+        )}
+      </div>
 
       <div className="ui-layer">
         <button type="button" className="ui-help-btn" onClick={() => setShowGuideBook(true)} aria-label="探索手册">?</button>
@@ -188,8 +228,15 @@ export function RoomScreen() {
         <img src="/DOU/images/ui/folder.png" alt="收藏柜" className="ui-icon-btn ui-folder"
           onClick={() => { if (debounceAction('collection', 500)) setShowCollection(true); }} />
         <div className="room-tabs">
-          <button className={`room-tab ${currentRoom === 'room_working' ? 'active' : ''}`} onClick={() => switchRoomWithAnim('room_working')}>办公区</button>
-          <button className={`room-tab ${currentRoom === 'room_living' ? 'active' : ''}`} onClick={() => switchRoomWithAnim('room_living')}>生活区</button>
+          {ROOM_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              className={`room-tab ${currentRoom === tab.id ? 'active' : ''}`}
+              onClick={() => switchRoomWithAnim(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -239,7 +286,9 @@ export function RoomScreen() {
       <TutorialGuide active={tutorialActive && !pendingOffline} stepIndex={tutorialStep} currentRoom={currentRoom}
         petPos={petPos} onNext={nextTutorialStep} onSkip={skipTutorial} onSwitchRoom={(room) => {
           if (room === currentRoom) return;
-          setSlideAnim(room === 'room_living' ? 'slide-left' : 'slide-right');
+          const currentIndex = ROOM_TABS.findIndex((tab) => tab.id === currentRoom);
+          const nextIndex = ROOM_TABS.findIndex((tab) => tab.id === room);
+          setSlideAnim(nextIndex > currentIndex ? 'slide-left' : 'slide-right');
           switchRoom(room);
           setTimeout(() => setSlideAnim(''), 300);
         }} />

@@ -19,7 +19,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'welcome', title: '欢迎来到 404 号房间', body: '这里是你的数字分身常住的小房间。你可以观察 TA 的日常、点击场景里的物品互动、收集赛博藏品，慢慢把空房间装点成自己的风格。', tip: '这是一份探索指引，帮你快速弄清「能点哪里、点了会怎样」。', target: 'none', room: 'room_working' },
   { id: 'pet', title: '你的数字分身', body: '地板上的像素小人就是你的分身。TA 会自己待机、敲键盘、睡觉或在房间里溜达。点击 TA 可以触发隐藏互动。', tip: '离开越久再回来，TA 说的话和状态可能不一样。', target: 'pet', room: 'room_working' },
   { id: 'shards', title: '数据碎片', body: '右上角金色硬币是「数据碎片」——房间里的通用货币。离线回归、翻找垃圾桶、未来小游戏等途径都能获得。', tip: '碎片用来解锁家具装饰，或在设置里消耗 30 个重构分身形象。', target: 'shards', room: 'room_working' },
-  { id: 'tabs', title: '两个场景区域', body: '房间分成「办公区」和「生活区」。底部 Tab 可切换背景，交互物品分布在不同区域，需要两边都逛逛。', tip: '切换房间不会丢失小人状态或已有进度。', target: 'tabs', room: 'room_working' },
+  { id: 'tabs', title: '多个场景区域', body: '现在可以在「办公区」「生活区」和新增的「数据林海」之间切换。底部 Tab 会带你去不同背景，交互物品也分散在不同区域。', tip: '切换场景不会丢失小人状态或已有进度。', target: 'tabs', room: 'room_working' },
   { id: 'computer', title: '办公区 · 电脑', body: '点击工位上的电脑区域，会弹出电脑浮层，小人进入敲键盘状态。屏幕会掉落 0 和 1，还有 3% 概率获得藏品「神秘磁盘」。', tip: '午夜模式（23:00–06:00）电脑仍可点击，但画面会变暗。', target: 'hotzone', hotZoneId: 'W01', room: 'room_working', switchToRoom: 'room_working' },
   { id: 'desk', title: '办公区 · 桌面', body: '左工位桌面是可探索区域。首次点击会弹出解锁面板——攒够碎片可买「桌子咖啡杯」；解锁后再点可查看特写浮层。', tip: '家具解锁后不会一直贴在主画面上，只在点击后的浮层里出现。', target: 'hotzone', hotZoneId: 'W03', room: 'room_working' },
   { id: 'bookshelf', title: '办公区 · 书架与墙面', body: '书架（中央）和左侧公告板区也能点击。可分别解锁「书架杂物摆件」和「墙面霓虹贴纸」。', target: 'hotzone', hotZoneId: 'W05', room: 'room_working' },
@@ -54,6 +54,13 @@ export const GUIDE_SECTIONS = [
     { name: '街机', desc: '推币机 + 抓娃娃机，赢数据碎片' },
     { name: '地毯 / 床头柜', desc: '解锁 F03 地毯（25）、F02 夜灯（20）' },
     { name: '窗户 / 绿植', desc: '装饰气泡' },
+  ]},
+  { title: '数据林海可探索', items: [
+    { name: '树桩终端', desc: '复用电脑逻辑，掉落 0/1，并保留神秘磁盘概率' },
+    { name: '铃兰休眠苔 / 冷却清泉 / 腐木数据堆', desc: '分别对应睡觉、补给、翻找垃圾桶三类核心互动' },
+    { name: '鸟居街机门', desc: '进入街机大厅，退出时回到数据林海' },
+    { name: '中央青苔阵 / 铃兰萤光丛 / 林间神龛', desc: '分别对应 F03 地毯、F02 夜灯、F05 杂物摆件' },
+    { name: '樱树 / 野草带', desc: '装饰热区，会弹出林海主题文案' },
   ]},
   { title: '小人状态', items: [
     { name: '待机 / 敲键盘 / 睡觉 / 乱爬', desc: '每 45 秒自动切换（特殊状态除外）' },

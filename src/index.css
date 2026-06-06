@@ -1,14 +1,14 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root {
   width: 100%; height: 100%; overflow: hidden;
-  background: #0a0a12; font-family: 'Noto Sans SC', sans-serif;
+  background: #fff; font-family: 'Noto Sans SC', sans-serif;
   color: #e8e8f0; -webkit-tap-highlight-color: transparent; user-select: none;
 }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 .pixel-font { font-family: 'Press Start 2P', cursive; }
 .app-shell {
   width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a12 100%);
+  background: #fff;
 }
 .game-viewport {
   position: relative;
@@ -16,6 +16,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   height: min(100vh, calc(100vw * 9 / 16));
   max-width: 960px; max-height: 540px; overflow: hidden;
   box-shadow: 0 0 40px rgba(0, 255, 200, 0.08);
+}
+.game-viewport.room-mode {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  background: #fff;
+  box-shadow: none;
 }
 @keyframes crt-open {
   0% { transform: scaleY(0.02); opacity: 0; filter: brightness(2); }
@@ -91,17 +99,27 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   width: 100%; padding: 10px; background: #111; border: 2px solid #444;
   color: #fff; border-radius: 4px; font-size: 14px; margin-bottom: 16px; text-align: center;
 }
-.room-scene { width: 100%; height: 100%; position: relative; overflow: hidden; }
-.room-bg { width: 100%; height: 100%; object-fit: cover; transition: filter 0.5s ease; }
+.room-scene { width: 100%; height: 100%; position: relative; overflow: hidden; background: #fff; }
+.room-stage {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(100vw, 100vh);
+  height: min(100vw, 100vh);
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+.room-bg { width: 100%; height: 100%; object-fit: contain; transition: filter 0.5s ease; }
 .room-bg.midnight { filter: brightness(0.35) saturate(0.7); }
 .hotzone-layer { position: absolute; inset: 0; z-index: 10; }
 .hotzone { position: absolute; cursor: pointer; background: transparent; }
 .hotzone.disabled { cursor: not-allowed; pointer-events: none; }
 .pet-layer { position: absolute; z-index: 20; transition: left 0.5s ease, top 0.5s ease; cursor: pointer; }
-.pet-sprite { width: 48px; height: 48px; image-rendering: pixelated; position: relative; }
+.pet-sprite { width: 64px; height: 64px; image-rendering: pixelated; position: relative; }
 .pet-sprite.glitching { animation: glitch 0.2s infinite; }
-.pet-face { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 20px; height: 20px; image-rendering: pixelated; }
-.pet-cat { position: absolute; left: 40px; bottom: -4px; width: 32px; height: 32px; image-rendering: pixelated; }
+.pet-face { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 24px; height: 24px; image-rendering: pixelated; }
+.pet-cat { position: absolute; left: 48px; bottom: -6px; width: 32px; height: 32px; image-rendering: pixelated; }
 .pet-hearts { position: absolute; top: -40px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; }
 .pet-hearts img { width: 16px; height: 16px; image-rendering: pixelated; animation: float-heart 1.5s ease-in-out infinite; }
 .ui-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; }

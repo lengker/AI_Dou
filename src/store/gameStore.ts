@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { A_CLASS, B_CLASS, COLLECTIBLES } from '@/data/collectibles';
-import { FURNITURE, getFurniture } from '@/data/furniture';
+import { getFurniture, getFurnitureByHotZoneId } from '@/data/furniture';
 import { TUTORIAL_STEPS } from '@/data/tutorial';
 import {
   CYBER_PREFIXES, EASTER_EGG_TITLES, POSITIVE_PREFIXES,
@@ -54,6 +54,12 @@ export interface PetClickResult {
   type: 'missy_progress' | 'missy_complete' | 'wake_confirm' | 'easter_egg' | 'easter_cooldown' | 'angry';
   message?: string;
 }
+
+const FOREST_FURNITURE_TITLES: Record<string, string> = {
+  F06: '青苔阵特写',
+  F07: '铃兰萤光特写',
+  F08: '林间神龛特写',
+};
 
 function ensureDaily(daily: GameState['daily']): GameState['daily'] {
   const today = todayKey();
@@ -210,16 +216,16 @@ export const useGameStore = create<GameState & GameActions>()(
         const s = get();
         const daily = ensureDaily(s.daily);
 
-        if (zoneId === 'W01' || zoneId === 'W02') {
+        if (zoneId === 'W01' || zoneId === 'W02' || zoneId === 'F01') {
           set({ petState: 'S2', computerSessionEnd: Date.now() + 10000 });
           return { type: 'computer', payload: { zoneId, midnight: isMidnightMode() } };
         }
-        if (zoneId === 'L01') {
+        if (zoneId === 'L01' || zoneId === 'F02') {
           if (s.missyState) return null;
           set({ petState: 'S3', tempBuff: { forcedSleep: { expiresAt: Date.now() + 5 * 60 * 1000 } } });
-          return { type: 'bed' };
+          return { type: 'bed', payload: { zoneId } };
         }
-        if (zoneId === 'L04') {
+        if (zoneId === 'L04' || zoneId === 'F03') {
           const weekend = isWeekend();
           const roll = Math.random() * 100;
           let result: 'cola' | 'expired' | 'empty';
@@ -239,13 +245,13 @@ export const useGameStore = create<GameState & GameActions>()(
             setTimeout(() => { if (get().petState === 'S5') get().setPetState('S1'); }, 3000);
           }
           set({ tempBuff: buff, daily });
-          return { type: 'fridge', payload: { result } };
+          return { type: 'fridge', payload: { result, zoneId } };
         }
-        if (zoneId === 'L05') {
+        if (zoneId === 'L05' || zoneId === 'F05') {
           set({ screen: 'arcade', returnRoom: s.currentRoom });
           return { type: 'arcade' };
         }
-        if (zoneId === 'L06') {
+        if (zoneId === 'L06' || zoneId === 'F04') {
           if (daily.trashSearchCount >= 3) return { type: 'trash', payload: { limit: true, message: '今日翻找次数已达上限。' } };
           daily.trashSearchCount += 1;
           set({ daily });
@@ -258,18 +264,23 @@ export const useGameStore = create<GameState & GameActions>()(
           }
           const found = pickTrashCollectible(s.collectibles)!;
           get().addCollectible(found);
-          return { type: 'trash', payload: { collectibleId: found } };
+          return { type: 'trash', payload: { collectibleId: found, zoneId } };
         }
         if (zoneId === 'W04') return { type: 'desktop_bubble', payload: { message: '这里暂时什么都没有。' } };
 
-        const furniture = FURNITURE.find((f) => f.hotZoneId === zoneId);
+        const furniture = getFurnitureByHotZoneId(zoneId);
         if (furniture) {
           if (!s.furniture.includes(furniture.id)) {
             return { type: 'furniture_unlock', payload: { furnitureId: furniture.id, cost: furniture.cost, name: furniture.name } };
           }
           return {
             type: 'furniture_view',
-            payload: { furnitureId: furniture.id, title: furniture.overlayTitle, icon: furniture.icon, hotZoneId: zoneId },
+            payload: {
+              furnitureId: furniture.id,
+              title: FOREST_FURNITURE_TITLES[zoneId] ?? furniture.overlayTitle,
+              icon: furniture.icon,
+              hotZoneId: zoneId,
+            },
           };
         }
         return null;

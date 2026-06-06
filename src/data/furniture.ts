@@ -8,4 +8,19 @@ export const FURNITURE: FurnitureDef[] = [
   { id: 'F05', name: '书架杂物摆件', cost: 35, room: 'room_working', hotZoneId: 'W05', icon: '/DOU/images/collectible/cloud.png', overlayTitle: '书架特写' },
 ];
 
+const FURNITURE_HOTZONE_TO_ID: Record<string, string> = {
+  W03: 'F01',
+  L02: 'F02',
+  L03: 'F03',
+  W06: 'F04',
+  W05: 'F05',
+  F07: 'F02',
+  F06: 'F03',
+  F08: 'F05',
+};
+
 export const getFurniture = (id: string) => FURNITURE.find((f) => f.id === id);
+export const getFurnitureByHotZoneId = (hotZoneId: string) => {
+  const furnitureId = FURNITURE_HOTZONE_TO_ID[hotZoneId];
+  return furnitureId ? getFurniture(furnitureId) : undefined;
+};

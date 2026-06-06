@@ -1,6 +1,6 @@
 export type Screen = 'mapping' | 'room' | 'arcade';
 
-export type RoomId = 'room_working' | 'room_living';
+export type RoomId = 'room_working' | 'room_living' | 'outdoor_forest';
 
 export type PetState = 'S1' | 'S2' | 'S3' | 'S4' | 'S5';
 
