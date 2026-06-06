@@ -1,17 +1,23 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { HOT_ZONES, ROOM_BACKGROUNDS, PET_STAND_POINTS } from '@/data/hotzones';
 import { getCollectible } from '@/data/collectibles';
-import { getFurniture } from '@/data/furniture';
 import { useGameStore, finalizeComputerInteraction } from '@/store/gameStore';
-import { isMidnightMode, isWeekend } from '@/utils/time';
+import { isMidnightMode } from '@/utils/time';
 import { debounceAction } from '@/utils/debounce';
 import { getSkinFilter, getHairFilter } from '@/utils/colorMapping';
+import { fetchRandomMood } from '@/services/aiFeatures';
+import { isAiConfigured } from '@/services/qwen';
+import { getAiRemaining } from '@/utils/aiQuota';
+import { RANDOM_EVENTS } from '@/data/titles';
+import { randomPick } from '@/utils/time';
 import { Overlay, Toast } from '@/components/Overlay';
 import { TypewriterText } from '@/components/TypewriterText';
 import { CollectionPanel } from '@/components/CollectionPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { GuideBook } from '@/components/GuideBook';
 import { TutorialGuide, WelcomeModal } from '@/components/TutorialGuide';
+import { PetChatPanel } from '@/components/PetChatPanel';
+import { InteractionOverlay } from '@/components/InteractionOverlay';
 
 interface ActiveOverlay { type: string; payload?: Record<string, unknown>; }
 
@@ -24,6 +30,7 @@ export function RoomScreen() {
   const missyState = useGameStore((s) => s.missyState);
   const showRandomEvent = useGameStore((s) => s.showRandomEvent);
   const pendingOffline = useGameStore((s) => s.pendingOffline);
+  const collectibles = useGameStore((s) => s.collectibles);
   const furniture = useGameStore((s) => s.furniture);
   const tutorialActive = useGameStore((s) => s.tutorialActive);
   const tutorialStep = useGameStore((s) => s.tutorialStep);
@@ -36,7 +43,9 @@ export function RoomScreen() {
   const tickPetState = useGameStore((s) => s.tickPetState);
   const clearPendingOffline = useGameStore((s) => s.clearPendingOffline);
   const triggerRandomEventOnEnter = useGameStore((s) => s.triggerRandomEventOnEnter);
+  const setRandomEventMessage = useGameStore((s) => s.setRandomEventMessage);
   const unlockFurniture = useGameStore((s) => s.unlockFurniture);
+  const addShards = useGameStore((s) => s.addShards);
   const resetForRemapping = useGameStore((s) => s.resetForRemapping);
   const nextTutorialStep = useGameStore((s) => s.nextTutorialStep);
   const skipTutorial = useGameStore((s) => s.skipTutorial);
@@ -48,6 +57,7 @@ export function RoomScreen() {
   const [showCollection, setShowCollection] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showGuideBook, setShowGuideBook] = useState(false);
+  const [showPetChat, setShowPetChat] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [bubble, setBubble] = useState<string | null>(null);
   const [wakeConfirm, setWakeConfirm] = useState(false);
@@ -57,8 +67,19 @@ export function RoomScreen() {
   const [slideAnim, setSlideAnim] = useState('');
   const charCounter = useRef(0);
   const midnight = isMidnightMode();
+  const aiOn = isAiConfigured();
 
-  useEffect(() => { triggerRandomEventOnEnter(); }, [triggerRandomEventOnEnter]);
+  useEffect(() => {
+    if (tutorialActive) return;
+    if (triggerRandomEventOnEnter()) {
+      if (aiOn && getAiRemaining() > 0) {
+        fetchRandomMood(profile).then(setRandomEventMessage);
+      } else {
+        setRandomEventMessage(randomPick(RANDOM_EVENTS));
+      }
+    }
+  }, [triggerRandomEventOnEnter, setRandomEventMessage, profile, tutorialActive, aiOn]);
+
   useEffect(() => { const t = setInterval(() => tickPetState(), 45000); return () => clearInterval(t); }, [tickPetState]);
   useEffect(() => { setPetPos(PET_STAND_POINTS[currentRoom]); }, [currentRoom]);
   useEffect(() => {
@@ -82,9 +103,13 @@ export function RoomScreen() {
 
   const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2000); }, []);
 
-  const onZoneClick = (zoneId: string, decorative?: boolean, decorativeMessage?: string) => {
+  const onZoneClick = (zoneId: string, decorative?: boolean) => {
     if (tutorialActive) return;
-    if (decorative && decorativeMessage) { setBubble(decorativeMessage); setTimeout(() => setBubble(null), 5000); return; }
+    if (decorative) {
+      const kind = zoneId === 'L07' ? 'window' : 'plant';
+      setOverlay({ type: 'ai_whisper', payload: { kind } });
+      return;
+    }
     const zone = HOT_ZONES.find((z) => z.id === zoneId);
     if (zone?.disabledInMidnight && midnight) return;
     const result = handleHotZone(zoneId);
@@ -117,13 +142,16 @@ export function RoomScreen() {
           return (
             <button key={zone.id} className={`hotzone ${disabled ? 'disabled' : ''}`}
               style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%` }}
-              onClick={() => onZoneClick(zone.id, zone.decorative, zone.decorativeMessage)} aria-label={zone.label} />
+              onClick={() => onZoneClick(zone.id, zone.decorative)} aria-label={zone.label} />
           );
         })}
       </div>
 
       <div className="pet-layer" style={{ left: `${petPos.x}%`, top: `${petPos.y}%` }}
-        onClick={() => { if (tutorialActive) return; const r = handlePetClick(); if (!r) return;
+        onClick={() => {
+          if (tutorialActive) return;
+          const r = handlePetClick();
+          if (!r) return;
           if (r.type === 'wake_confirm') setWakeConfirm(true);
           else if (r.type === 'missy_complete') { setBubble(r.message ?? ''); setTimeout(() => setBubble(null), 5000); }
           else if (r.type === 'easter_egg') { setErrorPopup(true); showToast('成就解锁：异常抛出者'); }
@@ -133,7 +161,7 @@ export function RoomScreen() {
           <img src="/DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
             filter: profile ? `${getSkinFilter(profile.appearance.skinTone)} ${getHairFilter(profile.appearance.hairColor)}` : undefined }} />
           {missyState && <img src="/DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
-          {petState === 'S3' && !missyState && <span style={{ position: 'absolute', top: -20, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: '#aaa' }}>Zzz</span>}
+          {petState === 'S3' && !missyState && <span className="pet-zzz">Zzz</span>}
           {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="/DOU/images/ui/heart.png" alt="heart" />)}</div>}
         </div>
         {catUnlocked && <img src="/DOU/images/pet/cat.png" alt="cat" className="pet-cat" />}
@@ -147,7 +175,15 @@ export function RoomScreen() {
 
       <div className="ui-layer">
         <button type="button" className="ui-help-btn" onClick={() => setShowGuideBook(true)} aria-label="探索手册">?</button>
-        <div className="shard-display"><img src="/DOU/images/ui/coin.png" alt="coin" /><span>{shards}</span></div>
+        {aiOn && (
+          <button type="button" className="ui-neural-btn" onClick={() => { if (debounceAction('neural', 500)) setShowPetChat(true); }} title="神经链接">
+            ⚡
+          </button>
+        )}
+        <div className="shard-display">
+          <img src="/DOU/images/ui/coin.png" alt="coin" /><span>{shards}</span>
+          {aiOn && <span className="ai-badge">{getAiRemaining()}</span>}
+        </div>
         <button className="ui-icon-btn ui-settings" onClick={() => { if (debounceAction('settings', 500)) setShowSettings(true); }} aria-label="设置">⚙</button>
         <img src="/DOU/images/ui/folder.png" alt="收藏柜" className="ui-icon-btn ui-folder"
           onClick={() => { if (debounceAction('collection', 500)) setShowCollection(true); }} />
@@ -157,9 +193,17 @@ export function RoomScreen() {
         </div>
       </div>
 
-      <InteractionOverlay overlay={overlay} onClose={closeOverlay} onUnlock={(id) => {
-        if (unlockFurniture(id)) { showToast('家具解锁成功！'); closeOverlay(); } else showToast('数据碎片不足。');
-      }} shards={shards} furniture={furniture} midnight={midnight} fallingChars={fallingChars} />
+      <InteractionOverlay
+        overlay={overlay}
+        onClose={closeOverlay}
+        onUnlock={(id) => { if (unlockFurniture(id)) { showToast('家具解锁成功！'); closeOverlay(); } else showToast('数据碎片不足。'); }}
+        shards={shards}
+        collectibles={collectibles}
+        profile={profile}
+        midnight={midnight}
+        fallingChars={fallingChars}
+        onLoot={(n) => { addShards(n); showToast(`终端漏洞赏金 +${n} 碎片！`); }}
+      />
 
       <Overlay open={!!pendingOffline} onClose={() => {
         if (pendingOffline?.tier === 'anomaly') { useGameStore.setState({ petState: 'S5' }); setTimeout(() => useGameStore.getState().setPetState('S1'), 5000); }
@@ -186,9 +230,7 @@ export function RoomScreen() {
       </Overlay>
 
       <Overlay open={errorPopup} onClose={() => setErrorPopup(false)}>
-        <div className="error-popup">
-          <div>SYSTEM ERROR 0x0000404</div><div>Exception thrown at pet.click()</div>
-        </div>
+        <div className="error-popup"><div>SYSTEM ERROR 0x0000404</div><div>Exception thrown at pet.click()</div></div>
         <p style={{ marginTop: 12, textAlign: 'center', color: '#ff6666' }}>再点我就要抛出异常了！</p>
       </Overlay>
 
@@ -202,69 +244,11 @@ export function RoomScreen() {
           setTimeout(() => setSlideAnim(''), 300);
         }} />
       <GuideBook open={showGuideBook} onClose={() => setShowGuideBook(false)} onRestartTutorial={() => startTutorial()} />
+      <PetChatPanel open={showPetChat} onClose={() => setShowPetChat(false)} profile={profile} />
       <CollectionPanel open={showCollection} onClose={() => setShowCollection(false)} />
       <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} onRemap={resetForRemapping}
         onToast={showToast} onRestartTutorial={() => startTutorial()} />
       <Toast message={toast} />
     </div>
   );
-}
-
-function InteractionOverlay({ overlay, onClose, onUnlock, shards, midnight, fallingChars }: {
-  overlay: ActiveOverlay | null; onClose: () => void; onUnlock: (id: string) => void;
-  shards: number; furniture: string[]; midnight: boolean; fallingChars: { char: string; id: number }[];
-}) {
-  if (!overlay) return null;
-  const { type, payload = {} } = overlay;
-
-  if (type === 'computer') return (
-    <Overlay open onClose={onClose}>
-      <h3 className="panel-title">电脑交互</h3>
-      <img src={midnight || payload.midnight ? '/DOU/images/interact/computer_simple.png' : '/DOU/images/interact/computer.png'} alt="computer" className="overlay-image" />
-      <div className="falling-chars">{fallingChars.map((c, i) => <span key={c.id} className="falling-char" style={{ left: `${20 + (i % 5) * 15}%` }}>{c.char}</span>)}</div>
-      <p style={{ textAlign: 'center', fontSize: 12, color: '#888' }}>小人正在敲键盘...</p>
-    </Overlay>
-  );
-  if (type === 'bed') return (
-    <Overlay open onClose={onClose}><h3 className="panel-title">床铺特写</h3>
-      <p style={{ textAlign: 'center', lineHeight: 1.8 }}>小人进入睡眠状态，持续 5 分钟。<br />所有临时 Buff 已清除。</p></Overlay>
-  );
-  if (type === 'fridge') {
-    const result = payload.result as string;
-    return (
-      <Overlay open onClose={onClose}><h3 className="panel-title">冰箱</h3>
-        {result === 'cola' && <><img src="/DOU/images/element/cola.png" alt="cola" className="overlay-image" /><p style={{ textAlign: 'center' }}>赛博可乐！移速提升 1.3 倍。</p>{isWeekend() && <p style={{ textAlign: 'center', color: '#ff9966', fontSize: 12 }}>周末多巴胺溢出</p>}</>}
-        {result === 'expired' && <p style={{ textAlign: 'center', color: '#888' }}>过期可乐...卡 Bug 闪烁中</p>}
-        {result === 'empty' && <TypewriterText text="只剩半瓶冷却液了。" />}</Overlay>
-    );
-  }
-  if (type === 'trash') {
-    if (payload.limit || payload.empty || payload.miss) return (
-      <Overlay open onClose={onClose}><h3 className="panel-title">翻找垃圾桶</h3>
-        <TypewriterText text={(payload.message as string) || (payload.empty ? '只剩电子灰尘了。' : '什么都没找到...')} /></Overlay>
-    );
-    const item = getCollectible(payload.collectibleId as string);
-    return (
-      <Overlay open onClose={onClose}><h3 className="panel-title">发现藏品！</h3>
-        {item && <><img src={item.icon} alt={item.name} className="overlay-image" /><p style={{ textAlign: 'center', color: '#00ffcc' }}>{item.name}</p></>}</Overlay>
-    );
-  }
-  if (type === 'furniture_unlock') return (
-    <Overlay open onClose={onClose}><h3 className="panel-title">解锁家具</h3>
-      <p style={{ textAlign: 'center', marginBottom: 16 }}>{payload.name as string}<br />需要 {payload.cost as number} 数据碎片</p>
-      <div className="panel-actions">
-        <button className="btn-primary" disabled={shards < (payload.cost as number)} onClick={() => onUnlock(payload.furnitureId as string)}>确认解锁</button>
-        <button className="btn-secondary" onClick={onClose}>取消</button>
-      </div></Overlay>
-  );
-  if (type === 'furniture_view') {
-    const item = getFurniture(payload.furnitureId as string);
-    return (
-      <Overlay open onClose={onClose}><h3 className="panel-title">{payload.title as string}</h3>
-        {item && <img src={item.icon} alt={item.name} className="overlay-image" />}
-        <p style={{ textAlign: 'center', color: '#aaa' }}>{item?.name}</p></Overlay>
-    );
-  }
-  if (type === 'desktop_bubble') return <Overlay open onClose={onClose}><TypewriterText text={payload.message as string} /></Overlay>;
-  return null;
 }

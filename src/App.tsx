@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { MappingScreen } from '@/screens/MappingScreen';
 import { RoomScreen } from '@/screens/RoomScreen';
-import { ArcadePlaceholder } from '@/screens/ArcadePlaceholder';
+import { ArcadeScreen } from '@/screens/ArcadeScreen';
 
 export function App() {
   const screen = useGameStore((s) => s.screen);
@@ -28,7 +28,7 @@ export function App() {
       <div className="game-viewport">
         {screen === 'mapping' && <MappingScreen />}
         {screen === 'room' && <RoomScreen />}
-        {screen === 'arcade' && <ArcadePlaceholder />}
+        {screen === 'arcade' && <ArcadeScreen />}
       </div>
     </div>
   );

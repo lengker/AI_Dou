@@ -34,7 +34,8 @@ interface GameActions {
   handlePetClick: () => PetClickResult | null;
   confirmWake: () => void;
   dismissRandomEvent: () => void;
-  triggerRandomEventOnEnter: () => void;
+  setRandomEventMessage: (message: string) => void;
+  triggerRandomEventOnEnter: () => boolean;
   startRemapping: () => boolean;
   resetForRemapping: () => void;
   startTutorial: () => void;
@@ -266,7 +267,10 @@ export const useGameStore = create<GameState & GameActions>()(
           if (!s.furniture.includes(furniture.id)) {
             return { type: 'furniture_unlock', payload: { furnitureId: furniture.id, cost: furniture.cost, name: furniture.name } };
           }
-          return { type: 'furniture_view', payload: { furnitureId: furniture.id, title: furniture.overlayTitle, icon: furniture.icon } };
+          return {
+            type: 'furniture_view',
+            payload: { furnitureId: furniture.id, title: furniture.overlayTitle, icon: furniture.icon, hotZoneId: zoneId },
+          };
         }
         return null;
       },
@@ -302,12 +306,17 @@ export const useGameStore = create<GameState & GameActions>()(
       confirmWake: () => set({ petState: 'S1' }),
       dismissRandomEvent: () => set({ showRandomEvent: null }),
 
+      setRandomEventMessage: (message) => {
+        set({ showRandomEvent: message });
+        setTimeout(() => get().dismissRandomEvent(), 8000);
+      },
+
       triggerRandomEventOnEnter: () => {
         const daily = ensureDaily(get().daily);
-        if (daily.randomEventCount >= 3 || Math.random() * 100 >= 30) return;
+        if (daily.randomEventCount >= 3 || Math.random() * 100 >= 30) return false;
         daily.randomEventCount += 1;
-        set({ daily, showRandomEvent: randomPick(RANDOM_EVENTS) });
-        setTimeout(() => get().dismissRandomEvent(), 5000);
+        set({ daily });
+        return true;
       },
 
       startRemapping: () => {

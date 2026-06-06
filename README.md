@@ -18,6 +18,18 @@ npm run dev
 - 房间交互（电脑/床/冰箱/垃圾桶）、家具解锁、收藏系统
 - 离线成长、新手探索指引、探索手册
 - 街机小游戏入口（待替换新游戏）
+- **千问 AI 神经功能**：分身对话、404终端、赛博签、梦境、考古报告等
+
+## AI 配置
+
+复制 `.env.example` 为 `.env.local`，填入阿里云 DashScope API Key：
+
+```
+VITE_QWEN_API_KEY=sk-xxx
+VITE_QWEN_MODEL=qwen-turbo
+```
+
+重启 `npm run dev` 后生效。未配置时使用本地 fallback 文案。
 
 ## 素材
 
