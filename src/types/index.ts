@@ -23,6 +23,8 @@ export interface AvatarAppearance {
   skinTone: SkinTone;
   hairColor: HairColor;
   isDefault: boolean;
+  /** 由上传照片生成的像素肖像（PNG Data URL） */
+  pixelPortrait?: string;
 }
 
 export interface AvatarProfile {
@@ -141,4 +143,6 @@ export interface GameState {
   onboardingStep: number;
   activeHint: HintKey | null;
   completedHints: HintKey[];
+  /** 留声机曲目是否已解锁（一次性购买） */
+  musicBoxUnlocked: boolean;
 }

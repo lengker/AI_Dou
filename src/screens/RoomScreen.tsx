@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { HOT_ZONES, ROOM_BACKGROUNDS, PET_STAND_POINTS, ROOM_TABS } from '@/data/hotzones';
+import { FOREST_ANIMAL_BY_ZONE } from '@/data/forestAnimals';
 import { getCollectible } from '@/data/collectibles';
 import { useGameStore, finalizeComputerInteraction } from '@/store/gameStore';
 import { isMidnightMode } from '@/utils/time';
 import { debounceAction } from '@/utils/debounce';
-import { getSkinFilter, getHairFilter } from '@/utils/colorMapping';
+import { getAvatarPortraitSrc, getAvatarPortraitStyle } from '@/utils/avatarVisual';
 import { fetchRandomMood } from '@/services/aiFeatures';
 import { isAiConfigured } from '@/services/qwen';
 import { getAiRemaining } from '@/utils/aiQuota';
@@ -19,6 +20,10 @@ import { TutorialGuide, WelcomeModal } from '@/components/TutorialGuide';
 import { PetChatPanel } from '@/components/PetChatPanel';
 import { InteractionOverlay } from '@/components/InteractionOverlay';
 import { FurnitureLayer } from '@/components/FurnitureLayer';
+import { ForestAnimalsLayer } from '@/components/ForestAnimalsLayer';
+import { MusicBoxProp } from '@/components/MusicBoxProp';
+import { MUSIC_BOX } from '@/data/musicBox';
+import { isForRiverPlaying, stopForRiver } from '@/utils/musicPlayer';
 import type { HintKey, RoomId } from '@/types';
 
 interface ActiveOverlay { type: string; payload?: Record<string, unknown>; }
@@ -192,6 +197,7 @@ export function RoomScreen() {
   const pendingOffline = useGameStore((s) => s.pendingOffline);
   const collectibles = useGameStore((s) => s.collectibles);
   const furniture = useGameStore((s) => s.furniture);
+  const activateMusicBox = useGameStore((s) => s.activateMusicBox);
   const discoveredZones = useGameStore((s) => s.discoveredZones);
   const forestAnimals = useGameStore((s) => s.forestAnimals);
   const unlockedRooms = useGameStore((s) => s.unlockedRooms);
@@ -461,7 +467,7 @@ export function RoomScreen() {
   const handleStageClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (tutorialActive || onboardingActive || missyState || draggingPetRef.current) return;
     const target = event.target as HTMLElement;
-    if (target.closest('.hotzone') || target.closest('.pet-layer')) return;
+    if (target.closest('.hotzone') || target.closest('.pet-layer') || target.closest('.music-box-marker')) return;
     const nextPos = getStagePetPosFromClient(event.clientX, event.clientY);
     if (!nextPos) return;
     setPetTarget(nextPos);
@@ -561,6 +567,9 @@ export function RoomScreen() {
   };
 
   const zones = HOT_ZONES.filter((z) => z.room === currentRoom);
+  const hotzones = currentRoom === 'outdoor_forest'
+    ? zones.filter((zone) => !FOREST_ANIMAL_BY_ZONE[zone.id])
+    : zones;
   const completedHintSet = new Set(completedHints);
   const onboardingCurrent = ONBOARDING_STEPS[onboardingStep];
   const onboardingHighlight = getOnboardingHighlight(onboardingCurrent, currentRoom, petPos);
@@ -606,9 +615,30 @@ export function RoomScreen() {
       <div className="room-stage" ref={stageRef} onClick={handleStageClick}>
         <img src={ROOM_BACKGROUNDS[currentRoom]} alt="room" className={`room-bg ${nightDebug ? 'low-light-debug' : ''} ${slideAnim}`} />
         <FurnitureLayer room={currentRoom} unlocked={furniture} />
+        {currentRoom === 'outdoor_forest' && (
+          <ForestAnimalsLayer
+            unlockedZoneIds={forestAnimals}
+            highlightZoneId={forestHintZoneId}
+            disabled={tutorialActive || onboardingActive}
+            onAnimalClick={(zoneId) => onZoneClick(zoneId)}
+          />
+        )}
+        {currentRoom === 'room_working' && (
+          <MusicBoxProp
+            disabled={tutorialActive || onboardingActive}
+            onClick={() => {
+              if (isForRiverPlaying()) {
+                stopForRiver();
+                showToast(MUSIC_BOX.copy.stopToast);
+                return;
+              }
+              setOverlay({ type: 'music_box', payload: {} });
+            }}
+          />
+        )}
 
         <div className="hotzone-layer">
-          {zones.map((zone) => {
+          {hotzones.map((zone) => {
             const disabled = !!(zone.disabledInNightDebug && nightDebug);
             if (zone.id === 'L01' && missyState) return null;
             const zoneHintLabel = getZoneHintLabel(zone.id);
@@ -635,8 +665,11 @@ export function RoomScreen() {
           onPointerCancel={(event) => finishPetPointer(event, false)}
         >
           <div className={`pet-sprite ${petState === 'S5' ? 'glitching' : ''} ${petJumping ? 'pet-jumping' : ''}`}>
-            <img src="./DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
-              filter: profile ? `${getSkinFilter(profile.appearance.skinTone)} ${getHairFilter(profile.appearance.hairColor)}` : undefined }} />
+            <img
+              src={getAvatarPortraitSrc(profile?.appearance)}
+              alt="pet"
+              style={getAvatarPortraitStyle(profile?.appearance)}
+            />
             {missyState && <img src="./DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
             {showSleepBadge && <span className="pet-state-badge">{forcedSleepActive ? '休息中' : '低光调试'}</span>}
             {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="./DOU/images/ui/heart.png" alt="heart" />)}</div>}
@@ -737,6 +770,15 @@ export function RoomScreen() {
           } else {
             showToast('数据碎片不足。');
           }
+        }}
+        onMusicBoxActivate={() => {
+          const wasUnlocked = useGameStore.getState().musicBoxUnlocked;
+          if (!activateMusicBox()) {
+            showToast('数据碎片不足。');
+            return false;
+          }
+          if (!wasUnlocked) showToast(MUSIC_BOX.copy.unlockSuccess);
+          return true;
         }}
         shards={shards}
         collectibles={collectibles}

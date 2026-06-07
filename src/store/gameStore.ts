@@ -4,6 +4,7 @@ import { A_CLASS, B_CLASS, COLLECTIBLES } from '@/data/collectibles';
 import { FOREST_ANIMALS, FOREST_ANIMAL_BY_ZONE } from '@/data/forestAnimals';
 import { getFurniture, getFurnitureByHotZoneId } from '@/data/furniture';
 import { HOT_ZONES } from '@/data/hotzones';
+import { MUSIC_BOX } from '@/data/musicBox';
 import { TUTORIAL_STEPS } from '@/data/tutorial';
 import {
   CYBER_PREFIXES, EASTER_EGG_TITLES, POSITIVE_PREFIXES,
@@ -36,6 +37,7 @@ interface GameActions {
   addCollectible: (id: string) => void;
   unlockAchievement: (id: string) => void;
   unlockFurniture: (furnitureId: string) => boolean;
+  activateMusicBox: () => boolean;
   handleHotZone: (zoneId: string) => HotZoneResult | null;
   handlePetClick: () => PetClickResult | null;
   confirmWake: () => void;
@@ -244,6 +246,7 @@ function createInitialState(): GameState {
     onboardingStep: 0,
     activeHint: null,
     completedHints: [],
+    musicBoxUnlocked: false,
   };
 }
 
@@ -415,6 +418,14 @@ export const useGameStore = create<GameState & GameActions>()(
         const item = getFurniture(furnitureId);
         if (!item || get().furniture.includes(item.id) || get().shards < item.cost) return false;
         set({ shards: get().shards - item.cost, furniture: [...get().furniture, item.id] });
+        return true;
+      },
+
+      activateMusicBox: () => {
+        const s = get();
+        if (s.musicBoxUnlocked) return true;
+        if (s.shards < MUSIC_BOX.costShards) return false;
+        set({ shards: s.shards - MUSIC_BOX.costShards, musicBoxUnlocked: true });
         return true;
       },
 

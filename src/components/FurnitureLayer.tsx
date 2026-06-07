@@ -67,7 +67,8 @@ export function FurnitureLayer({ room, unlocked }: FurnitureLayerProps) {
               className={`furniture-lamp ${item.variant === 'forest' ? 'furniture-lamp--forest' : ''}`}
               style={boxStyle}
             >
-              <span className="furniture-lamp-core" />
+              <span className="furniture-lamp-core" aria-hidden />
+              {icon && <img src={icon} alt="" className="furniture-lamp-icon" />}
             </div>
           );
         }

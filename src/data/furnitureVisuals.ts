@@ -18,7 +18,8 @@ export interface FurnitureVisual {
 /** 场景叠加位置；图标主题统一取自 furniture.ts 的 icon 字段 */
 export const FURNITURE_VISUALS: FurnitureVisual[] = [
   { furnitureId: 'F01', room: 'room_working', x: 15, y: 47.5, w: 7, h: 5, kind: 'prop' },
-  { furnitureId: 'F02', room: 'room_living', x: 32, y: 43, w: 6, h: 7, kind: 'lamp', variant: 'indoor' },
+  /** 对齐 L02 床头柜台面 */
+  { furnitureId: 'F02', room: 'room_living', x: 29, y: 39.5, w: 4.5, h: 10, kind: 'lamp', variant: 'indoor' },
   { furnitureId: 'F03', room: 'room_living', x: 47, y: 70, w: 14, h: 7, kind: 'star-carpet', variant: 'indoor' },
   {
     furnitureId: 'F04',
@@ -48,21 +49,6 @@ export const FURNITURE_VISUALS: FurnitureVisual[] = [
       { left: '18%', top: '16%', size: '40%' },
       { left: '48%', top: '40%', size: '36%' },
       { left: '26%', top: '66%', size: '34%' },
-    ],
-  },
-  { furnitureId: 'F02', room: 'outdoor_forest', x: 31, y: 47, w: 8, h: 8, kind: 'lamp', variant: 'forest' },
-  { furnitureId: 'F03', room: 'outdoor_forest', x: 44, y: 56, w: 12, h: 7, kind: 'star-carpet', variant: 'forest' },
-  {
-    furnitureId: 'F05',
-    room: 'outdoor_forest',
-    x: 45,
-    y: 34,
-    w: 12,
-    h: 14,
-    kind: 'props',
-    scatter: [
-      { left: '22%', top: '26%', size: '38%' },
-      { left: '54%', top: '56%', size: '34%' },
     ],
   },
 ];

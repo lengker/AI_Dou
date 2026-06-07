@@ -11,8 +11,8 @@ export const HOT_ZONES: HotZone[] = [
   { id: 'W05', label: '角落书架', x: 46, y: 18, w: 12, h: 28, room: 'room_working' },
   { id: 'W06', label: '左墙公告板区', x: 28, y: 22, w: 15, h: 18, room: 'room_working' },
   { id: 'W07', label: '左下绿植', x: 3, y: 68, w: 9, h: 14, room: 'room_working', decorative: true, decorativeMessage: '它也在等您回来。' },
-  { id: 'L01', label: '单人床', x: 12, y: 44, w: 24, h: 18, room: 'room_living', disabledInNightDebug: true },
-  { id: 'L02', label: '床头柜', x: 31, y: 42, w: 8, h: 10, room: 'room_living' },
+  { id: 'L01', label: '单人床', x: 12, y: 45, w: 17, h: 16, room: 'room_living', disabledInNightDebug: true },
+  { id: 'L02', label: '床头柜', x: 24, y: 42, w: 7, h: 9, room: 'room_living' },
   { id: 'L03', label: '中央地毯区', x: 46, y: 68, w: 16, h: 10, room: 'room_living' },
   { id: 'L04', label: '冰箱', x: 80, y: 46, w: 12, h: 24, room: 'room_living', disabledInNightDebug: true },
   { id: 'L05', label: '街机', x: 45, y: 28, w: 14, h: 28, room: 'room_living' },
@@ -27,8 +27,8 @@ export const HOT_ZONES: HotZone[] = [
   { id: 'F06', label: '紫花地块', x: 12, y: 63, w: 16, h: 14, room: 'outdoor_forest' },
   { id: 'F07', label: '木栅围栏', x: 40, y: 50, w: 18, h: 12, room: 'outdoor_forest' },
   { id: 'F08', label: '蓝花广场', x: 62, y: 30, w: 18, h: 18, room: 'outdoor_forest' },
-  { id: 'F09', label: '路牌岔口', x: 80, y: 62, w: 11, h: 13, room: 'outdoor_forest', decorative: true, decorativeMessage: '风经过时，数据叶会闪一下。' },
-  { id: 'F10', label: '岸边微光', x: 76, y: 82, w: 14, h: 11, room: 'outdoor_forest', decorative: true, decorativeMessage: '草叶里藏着未命名的字节。' },
+  { id: 'F09', label: '路牌岔口', x: 80, y: 62, w: 11, h: 13, room: 'outdoor_forest' },
+  { id: 'F10', label: '岸边微光', x: 76, y: 82, w: 14, h: 11, room: 'outdoor_forest' },
 ];
 
 export const ROOM_BACKGROUNDS = {

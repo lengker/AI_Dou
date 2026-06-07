@@ -10,6 +10,11 @@ export interface ForestAnimalDef {
   intro: string;
   successText: string;
   rewardShards: number;
+  /** 场景内锚点（背景百分比，脚底中心） */
+  markerX: number;
+  markerY: number;
+  /** 精灵显示高度（px），比默认分身（约 46px）更小 */
+  markerHeight: number;
   target?: number;
   options?: string[];
   correctIndex?: number;
@@ -28,6 +33,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '轻点水波，把猫窝周围的涟漪叠起来，别惊动它。',
     successText: '猫咪探出脑袋，在水边打了个滚，愿意让你记录它了。',
     rewardShards: 3,
+    markerX: 28,
+    markerY: 78,
+    markerHeight: 22,
     target: 5,
   },
   {
@@ -40,6 +48,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '按住“屏息等待”，安静够久，草丛里的小刺球才会出来。',
     successText: '刺猬慢慢从草里探头，把自己团成一个安全的小球。',
     rewardShards: 3,
+    markerX: 39,
+    markerY: 44,
+    markerHeight: 20,
     target: 100,
   },
   {
@@ -52,6 +63,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '等气泡漂进亮区时按下“收网”，动作太早太晚都会扑空。',
     successText: '一只发亮的伊势虾顺着水纹跃出水面，被你记录进图鉴。',
     rewardShards: 4,
+    markerX: 33,
+    markerY: 76,
+    markerHeight: 20,
     timingTarget: [42, 64],
   },
   {
@@ -64,6 +78,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '木堆后有三处响动，选对真正晃动的树枝，猴子才会现身。',
     successText: '顽猴从倒木后翻出来，对你做了个夸张鬼脸。',
     rewardShards: 3,
+    markerX: 51,
+    markerY: 68,
+    markerHeight: 24,
     options: ['左侧树影', '中间树枝', '右侧蘑菇'],
     correctIndex: 1,
   },
@@ -77,6 +94,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '记住树梢闪烁的三道花光顺序，按同样顺序点亮它。',
     successText: '一团软乎乎的小雪鸟落在枝头，像一封会呼吸的白色信件。',
     rewardShards: 4,
+    markerX: 47,
+    markerY: 24,
+    markerHeight: 18,
     sequence: ['蓝花', '白花', '黄花'],
   },
   {
@@ -89,6 +109,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '跟着脚印左右交替拍手，别打乱节奏，小狗才会靠近。',
     successText: '短腿小狗踩着碎步跑出来，在花边转了一圈。',
     rewardShards: 3,
+    markerX: 32,
+    markerY: 64,
+    markerHeight: 20,
     target: 6,
   },
   {
@@ -101,6 +124,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '快速拍三下围栏，让节奏从木桩里传过去，猴子会回应。',
     successText: '侦察猴从围栏后弹起来，确认这里已经安全。',
     rewardShards: 3,
+    markerX: 49,
+    markerY: 58,
+    markerHeight: 22,
     target: 3,
   },
   {
@@ -113,6 +139,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '按“蓝花 -> 黄花 -> 蓝花”轻触花丛，孔雀会在花间展开尾羽。',
     successText: '孔雀尾羽像扇形像素屏一样慢慢打开，停留了好一会儿。',
     rewardShards: 4,
+    markerX: 68,
+    markerY: 42,
+    markerHeight: 24,
     sequence: ['蓝花', '黄花', '蓝花'],
   },
   {
@@ -125,6 +154,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '它总会从最短的那条小路冲出来，选对方向牌试试看。',
     successText: '追风犬从路牌后绕出来，叼着一枚亮闪闪的小叶片。',
     rewardShards: 4,
+    markerX: 74,
+    markerY: 64,
+    markerHeight: 20,
     options: ['花坡', '木桥', '树荫'],
     correctIndex: 2,
   },
@@ -138,6 +170,9 @@ export const FOREST_ANIMALS: ForestAnimalDef[] = [
     intro: '等樱粉流光穿过桥下亮区时按下“捕捉”，太急就会只拍到水花。',
     successText: '樱光天马从水雾里掠出，像把整片林海的晚霞都带了过来。',
     rewardShards: 5,
+    markerX: 72,
+    markerY: 76,
+    markerHeight: 22,
     timingTarget: [48, 68],
   },
 ];

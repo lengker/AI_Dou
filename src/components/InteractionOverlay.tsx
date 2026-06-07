@@ -11,6 +11,9 @@ import {
   fetchDream, fetchFridgeFortune, fetchTrashReport,
   fetchWindowWhisper, fetchPlantWhisper, fetchBookshelfLine,
 } from '@/services/aiFeatures';
+import { MUSIC_BOX } from '@/data/musicBox';
+import { playForRiver } from '@/utils/musicPlayer';
+import { useGameStore } from '@/store/gameStore';
 import type { AvatarProfile } from '@/types';
 
 interface ActiveOverlay {
@@ -19,11 +22,12 @@ interface ActiveOverlay {
 }
 
 export function InteractionOverlay({
-  overlay, onClose, onUnlock, shards, collectibles, profile, nightDebug, fallingChars, onLoot, forestAnimals, onUnlockForestAnimal,
+  overlay, onClose, onUnlock, onMusicBoxActivate, shards, collectibles, profile, nightDebug, fallingChars, onLoot, forestAnimals, onUnlockForestAnimal,
 }: {
   overlay: ActiveOverlay | null;
   onClose: () => void;
   onUnlock: (id: string) => void;
+  onMusicBoxActivate: () => boolean;
   shards: number;
   collectibles: string[];
   profile: AvatarProfile | null;
@@ -89,7 +93,79 @@ export function InteractionOverlay({
   }
   if (type === 'furniture_view') return <FurnitureViewOverlay onClose={onClose} payload={payload} />;
   if (type === 'desktop_bubble') return <DesktopBubbleOverlay onClose={onClose} payload={payload} />;
+  if (type === 'music_box') {
+    return <MusicBoxOverlay onClose={onClose} shards={shards} onActivate={onMusicBoxActivate} />;
+  }
   return null;
+}
+
+function MusicBoxOverlay({
+  onClose,
+  shards,
+  onActivate,
+}: {
+  onClose: () => void;
+  shards: number;
+  onActivate: () => boolean;
+}) {
+  const unlocked = useGameStore((s) => s.musicBoxUnlocked);
+  const [playing, setPlaying] = useState(false);
+  const [error, setError] = useState('');
+  const { copy } = MUSIC_BOX;
+
+  const handleStart = async () => {
+    setError('');
+    if (!onActivate()) return;
+    try {
+      await playForRiver(MUSIC_BOX.audioSrc);
+      setPlaying(true);
+    } catch {
+      setError(copy.playError);
+    }
+  };
+
+  return (
+    <Overlay open onClose={onClose}>
+      <h3 className="panel-title">{copy.overlayTitle}</h3>
+      <p style={{ textAlign: 'center', fontSize: 11, color: '#888', marginBottom: 10 }}>{copy.tagline}</p>
+      <img src={MUSIC_BOX.image} alt="留声机" className="overlay-image overlay-image-sm" />
+      {playing ? (
+        <>
+          <p style={{ textAlign: 'center', lineHeight: 1.7, marginBottom: 8, color: '#d6efe8' }}>
+            {copy.playing}
+          </p>
+          <p style={{ textAlign: 'center', fontSize: 11, color: '#888', marginBottom: 16 }}>{copy.payHint}</p>
+          <div className="panel-actions">
+            <button className="btn-primary" type="button" onClick={onClose}>{copy.closePanel}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p style={{ textAlign: 'center', lineHeight: 1.7, marginBottom: 12, fontSize: 12, color: '#ccc' }}>
+            {unlocked ? copy.unlockedNote : copy.intro}
+          </p>
+          {!unlocked && (
+            <p style={{ textAlign: 'center', marginBottom: 8 }}>
+              需要 <strong style={{ color: '#ffd166' }}>{MUSIC_BOX.costShards}</strong> 数据碎片
+            </p>
+          )}
+          <p style={{ textAlign: 'center', fontSize: 11, color: '#888', marginBottom: 12 }}>{copy.payHint}</p>
+          {error && <p style={{ textAlign: 'center', color: '#ff8866', fontSize: 12, marginBottom: 8 }}>{error}</p>}
+          <div className="panel-actions">
+            <button
+              className="btn-primary"
+              type="button"
+              disabled={!unlocked && shards < MUSIC_BOX.costShards}
+              onClick={() => void handleStart()}
+            >
+              {unlocked ? copy.playButton : copy.unlockButton}
+            </button>
+            <button className="btn-secondary" type="button" onClick={onClose}>{copy.cancel}</button>
+          </div>
+        </>
+      )}
+    </Overlay>
+  );
 }
 
 function BedOverlay({ onClose, profile, zoneId }: { onClose: () => void; profile: AvatarProfile | null; zoneId?: string }) {
