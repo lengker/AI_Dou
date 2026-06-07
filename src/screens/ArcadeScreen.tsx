@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { CLAW_PRIZES } from '@/data/clawPrizes';
 import { useGameStore } from '@/store/gameStore';
-import { ClawMachineGame } from '@/games/ClawMachineGame';
+import { ClawMachineGame, CLAW_GRAB_COST } from '@/games/ClawMachineGame';
 import type { HintKey } from '@/types';
 
 const CoinPusherGame = lazy(() =>
@@ -83,7 +83,7 @@ export function ArcadeScreen() {
           </div>
           <div className="machine-copy">
             <h3>赛博推币机</h3>
-            <p>2D 钉板与 3D 推板组合，节奏直接，适合先热手。</p>
+            <p>2D 钉板 + 3D 推板，每投 1 枚消耗 1 碎片，落碟得分。</p>
           </div>
           <span className="machine-tag">{completedHintSet.has('arcade_coin') ? '轻松上手' : '推荐先玩'}</span>
           {!completedHintSet.has('arcade_coin') && <span className="hint-badge hint-badge-arcade">主线推荐</span>}
@@ -108,7 +108,7 @@ export function ArcadeScreen() {
           </div>
           <div className="machine-copy">
             <h3>赛博抓娃娃机</h3>
-            <p>{unlockedFeatures.includes('claw') ? '像素抓取，zoo 玩偶已经入柜，适合碰运气赚高额碎片。' : '完成一次推币机游玩后解锁。'}</p>
+            <p>{unlockedFeatures.includes('claw') ? `每抓 ${CLAW_GRAB_COST} 碎片，次数不限，抓中玩偶按奖励入账。` : '完成一次推币机游玩后解锁。'}</p>
           </div>
           <span className="machine-tag">{unlockedFeatures.includes('claw') ? '高回报' : '待解锁'}</span>
           {unlockedFeatures.includes('claw') && !completedHintSet.has('arcade_claw') && <span className="hint-badge hint-badge-arcade">NEW</span>}

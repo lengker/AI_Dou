@@ -1210,6 +1210,57 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .arcade-result-card h3 { color: #00ffcc; margin-bottom: 12px; }
 .arcade-result-shards { font-size: 24px; color: #ffd700; margin-bottom: 20px; font-family: 'Press Start 2P', monospace; }
+
+.love-title-reveal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 2, 10, 0.82);
+  backdrop-filter: blur(2px);
+}
+.love-title-reveal-card {
+  width: min(92vw, 360px);
+  padding: 28px 20px 22px;
+  text-align: center;
+  background: linear-gradient(180deg, #241028 0%, #120818 100%);
+  border: 3px solid #ff6eb4;
+  box-shadow: 0 0 24px rgba(255, 110, 180, 0.35), inset 0 0 20px rgba(255, 110, 180, 0.08);
+}
+.love-title-reveal-label {
+  font-size: 10px;
+  color: #92efe7;
+  letter-spacing: 0.08em;
+  margin-bottom: 18px;
+}
+.love-title-reveal-title {
+  font-size: clamp(14px, 4.2vw, 18px);
+  line-height: 1.8;
+  color: #ffd86b;
+  text-shadow: 0 0 8px rgba(255, 216, 107, 0.45);
+  margin-bottom: 14px;
+  min-height: 3.6em;
+}
+.love-title-cursor {
+  animation: love-title-blink 0.8s step-end infinite;
+  color: #ff88cc;
+}
+.love-title-reveal-sub {
+  font-size: 12px;
+  color: #c8a0d8;
+  margin-bottom: 10px;
+}
+.love-title-reveal-shards {
+  font-size: 11px;
+  color: #ffd700;
+  margin-bottom: 18px;
+  text-shadow: 0 0 6px rgba(255, 215, 0, 0.35);
+}
+@keyframes love-title-blink {
+  50% { opacity: 0; }
+}
 .claw-result-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1322,6 +1373,19 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
   z-index: 40; color: #ffd700; font-size: 10px;
   animation: glitch 0.4s infinite; text-shadow: 0 0 8px #ff88cc;
+  pointer-events: none;
+}
+.coin-pusher-toast {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 42;
+  background: rgba(0, 0, 0, 0.82);
+  border: 2px solid #00ffcc;
+  color: #00ffcc;
+  padding: 8px 12px;
+  font-size: 10px;
   pointer-events: none;
 }
 .slot-overlay { z-index: 60; }

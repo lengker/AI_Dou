@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import type { AvatarProfile } from '@/types';
+import { LoveTitleReveal } from '@/components/LoveTitleReveal';
+import { TERMINAL_LOVE_TITLE, TERMINAL_LOVE_TITLE_SHARDS } from '@/data/titles';
+import { useGameStore } from '@/store/gameStore';
 import { promptBookshelf } from '@/services/aiPrompts';
 import { qwenOnce, pickFallback, isAiConfigured } from '@/services/qwen';
 import { fetchTerminalReply, fetchTerminalFortune } from '@/services/aiFeatures';
 import { getAiRemaining } from '@/utils/aiQuota';
+import { playTitleRevealFanfare, vibrate } from '@/utils/sound';
 
 interface TerminalLine {
   type: 'in' | 'out' | 'sys' | 'err';
@@ -19,6 +23,9 @@ interface AiTerminalProps {
 }
 
 export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onLoot }: AiTerminalProps) {
+  const grantTerminalLoveTitle = useGameStore((s) => s.grantTerminalLoveTitle);
+  const loveSequenceArmed = useRef(false);
+  const [showTitleReveal, setShowTitleReveal] = useState(false);
   const [lines, setLines] = useState<TerminalLine[]>([
     { type: 'sys', text: 'ROOM_OS v4.0.4 — 神经终端已挂载' },
     { type: 'out', text: nightDebug ? '>> 低光调试已启用，终端切换到简化界面' : '>> 输入 help 查看指令，或直接对话' },
@@ -33,6 +40,18 @@ export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onL
 
   const append = (...items: TerminalLine[]) => setLines((l) => [...l, ...items]);
 
+  const triggerLoveTitleReveal = () => {
+    if (grantTerminalLoveTitle()) {
+      playTitleRevealFanfare();
+      vibrate(80);
+      setShowTitleReveal(true);
+      return;
+    }
+    if (profile?.title === TERMINAL_LOVE_TITLE) {
+      append({ type: 'sys', text: `>> 称号「${TERMINAL_LOVE_TITLE}」已铭刻` });
+    }
+  };
+
   const runCommand = async (raw: string) => {
     const cmd = raw.trim().toLowerCase();
     append({ type: 'in', text: `> ${raw}` });
@@ -45,6 +64,7 @@ export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onL
       return;
     }
     if (cmd === 'clear') {
+      loveSequenceArmed.current = false;
       setLines([{ type: 'sys', text: '— 屏幕已清空 —' }]);
       return;
     }
@@ -110,6 +130,25 @@ export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onL
       return;
     }
 
+    const trimmed = raw.trim();
+    if (cmd === 'zzy') {
+      loveSequenceArmed.current = true;
+      append({ type: 'out', text: '小周周是世界上最可爱的小盆友，我很喜欢她呢！' });
+      return;
+    }
+    if (trimmed === '周宗英') {
+      append({ type: 'out', text: '小周周是世界上最可爱的小盆友，我很喜欢她呢！' });
+      return;
+    }
+    if (cmd === 'lxz') {
+      append({ type: 'out', text: 'lxz是世界上最帅的boy🐖❤xzz' });
+      if (loveSequenceArmed.current) {
+        loveSequenceArmed.current = false;
+        triggerLoveTitleReveal();
+      }
+      return;
+    }
+
     setBusy(true);
     try {
       const reply = isAiConfigured()
@@ -131,24 +170,32 @@ export function AiTerminal({ profile, shards, collectiblesCount, nightDebug, onL
   };
 
   return (
-    <div className="ai-terminal">
-      <div className="ai-terminal-screen" ref={scrollRef}>
-        {lines.map((line, i) => (
-          <div key={i} className={`terminal-line ${line.type}`}>{line.text}</div>
-        ))}
-        {busy && <div className="terminal-line sys">...decrypting</div>}
+    <>
+      <div className="ai-terminal">
+        <div className="ai-terminal-screen" ref={scrollRef}>
+          {lines.map((line, i) => (
+            <div key={i} className={`terminal-line ${line.type}`}>{line.text}</div>
+          ))}
+          {busy && <div className="terminal-line sys">...decrypting</div>}
+        </div>
+        <div className="ai-terminal-input-row">
+          <span className="terminal-prompt">&gt;</span>
+          <input
+            className="ai-terminal-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+            placeholder="help / fortune / 随便问..."
+            disabled={busy}
+          />
+        </div>
       </div>
-      <div className="ai-terminal-input-row">
-        <span className="terminal-prompt">&gt;</span>
-        <input
-          className="ai-terminal-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
-          placeholder="help / fortune / 随便问..."
-          disabled={busy}
-        />
-      </div>
-    </div>
+      <LoveTitleReveal
+        open={showTitleReveal}
+        title={TERMINAL_LOVE_TITLE}
+        shardReward={TERMINAL_LOVE_TITLE_SHARDS}
+        onClose={() => setShowTitleReveal(false)}
+      />
+    </>
   );
 }

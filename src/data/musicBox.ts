@@ -20,5 +20,6 @@ export const MUSIC_BOX = {
     cancel: '先不听了',
     playError: '播放失败，请再试一次。',
     unlockSuccess: '曲目已解锁，留声机开始循环写入。',
+    unlockedNote: '曲目已写入缓存，可随时播放或再次点击留声机切断信号。',
   },
 } as const;

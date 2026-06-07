@@ -21,20 +21,60 @@ const PLATFORM_TOP_Y = 0;
 const COIN_REST_Y = PLATFORM_TOP_Y + COIN_HALF_Y + 0.003;
 const PLATFORM_CENTER_Z = 0;
 const FRONT_Z = PLATFORM_D / 2 - 0.12;
+
+/**
+ * ── 前沿出币手感调节（coinPusher3D.ts 顶部常量）──
+ * 更容易掉币：↓ FRONT_LIP_H / FRONT_BUMPER_H，↑ DROP_SLOT_HALF_W，
+ *            ↑ CATCH_EDGE_Z 余量、↑ CATCH_HEIGHT_MULT，↓ CATCH_VZ_MIN / CATCH_VZ_EDGE，↑ FRONT_DAMP_MUL
+ * 更难掉币：反向调节。FRONT_BUMPER_W 越大，两侧挡得越死。
+ */
+/** 两侧金色边沿高度；越小越容易翻过去 */
+const FRONT_LIP_H = 0.08;
+/** 出币口前方内侧挡条位置（越靠后 z 越小，挡得越前） */
+const FRONT_BUMPER_Z = FRONT_Z - 0.21;
+/** 内侧挡条高度；越小越容易推过去 */
+const FRONT_BUMPER_H = 0.045;
+/** 内侧挡条宽度（单侧）；越小中间通道越宽 */
+const FRONT_BUMPER_W = 0.92;
+/** 落币有效半宽（|x|≤此值）；越大越容易掉进碟子 */
+const DROP_SLOT_HALF_W = 0.2;
+/** 判定「到边」：z ≥ FRONT_Z - 此值 即算到前沿；越大越早触发掉币 */
+const CATCH_EDGE_Z = 0.045;
+/** 高度上限：y 低于 COIN_REST_Y + COIN_THICK×此值 才可掉；越大越宽松 */
+const CATCH_HEIGHT_MULT = 2.25;
+/** 向前速度 > 此值 可掉币；越小越轻推就掉 */
+const CATCH_VZ_MIN = 0.06;
+/** 已到边时，向前速度 > 此值 也可掉；越小越灵敏 */
+const CATCH_VZ_EDGE = 0.02;
+/** 前沿 z > FRONT_Z - 此值 时开始减速；越大影响范围越大 */
+const FRONT_DAMP_ZONE = 0.4;
+/** 前沿向前速度每帧乘数；越接近 1 减速越少、越好推落 */
+const FRONT_DAMP_MUL = 0.98;
 const SAUCER_Z = FRONT_Z + 0.32;
 const MAX_SHARDS = 30;
 const SAUCER_GAIN = 2;
 
 const BACK_INNER_Z = -PLATFORM_D / 2 + 0.14;
 const PUSHER_FRONT_MIN = BACK_INNER_Z + 0.28;
-const PUSHER_FRONT_MAX = BACK_INNER_Z + 1.38;
+const PUSHER_STROKE = 1.36;
+const PUSHER_FRONT_MAX = BACK_INNER_Z + PUSHER_STROKE;
 const PUSHER_THICKNESS = 0.07;
-const PUSHER_VISUAL_H = 0.034;
+/** 推板视觉：顶面刻意低于硬币底缘，避免盖住平放的硬币 */
+const PUSHER_UNDER_GAP = 0.006;
+const PUSHER_UNDER_TOP = PLATFORM_TOP_Y + 0.003 - PUSHER_UNDER_GAP;
+const PUSHER_UNDER_H = 0.05;
+const PUSHER_UNDER_Y = PUSHER_UNDER_TOP - PUSHER_UNDER_H / 2;
+const PUSHER_FACE_H = 0.044;
 const PUSHER_HALF_W = PLATFORM_W / 2 - 0.04;
 const PUSHER_SPEED = 0.85;
-const PUSHER_PHYSICS_Y = PLATFORM_TOP_Y - PUSHER_THICKNESS / 2 + 0.001;
-const PUSHER_VISUAL_Y = PLATFORM_TOP_Y + PUSHER_VISUAL_H / 2 + 0.004;
-const SEED_WARMUP = 1.0;
+const PUSHER_SURFACE_Y = PLATFORM_TOP_Y + 0.003;
+const PUSHER_PHYSICS_Y = PUSHER_SURFACE_Y - PUSHER_THICKNESS / 2;
+const SEED_WARMUP = 1.4;
+const SEED_COIN_COUNT = 150;
+const TOWER_LAYERS = 42;
+/** 推板完全伸出后，前沿到首排硬币后缘的留白 */
+const SEED_PUSHER_CLEARANCE = 0.11;
+const seedCoinZMin = () => PUSHER_FRONT_MAX + COIN_RADIUS + SEED_PUSHER_CLEARANCE;
 const DROP_Z_MIN = BACK_INNER_Z + 0.12;
 const DROP_Z_MAX = BACK_INNER_Z + 0.42;
 const PHYSICS_STEP = 1 / 60;
@@ -67,7 +107,11 @@ export class CoinPusher3DEngine {
   private coins: CoinEntry[] = [];
   private pusherBody!: CANNON.Body;
   private pusherMesh!: THREE.Mesh;
+  private pusherFaceMesh!: THREE.Mesh;
+  private pusherLipMesh!: THREE.Mesh;
   private pusherMat!: THREE.MeshStandardMaterial;
+  private pusherAccentMat!: THREE.MeshStandardMaterial;
+  private coinRenderMat!: THREE.MeshStandardMaterial;
   private pusherShape!: CANNON.Box;
   private lastPusherDepth = 0;
   private animId = 0;
@@ -146,6 +190,7 @@ export class CoinPusher3DEngine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.sortObjects = true;
     this.container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.HemisphereLight(0xccc0ff, 0x1a1028, 0.58));
@@ -167,26 +212,32 @@ export class CoinPusher3DEngine {
     this.platformMaterial = new CANNON.Material('platform');
     this.pusherMaterial = new CANNON.Material('pusher');
 
+    this.coinRenderMat = this.surfaceMat(PALETTE.gold, 0.24);
+    this.coinRenderMat.polygonOffset = true;
+    this.coinRenderMat.polygonOffsetFactor = -4;
+    this.coinRenderMat.polygonOffsetUnits = -4;
+    this.coinRenderMat.depthWrite = true;
+
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMaterial, this.coinMaterial, {
-      friction: 0.45,
-      restitution: 0.02,
+      friction: 0.28,
+      restitution: 0.04,
       contactEquationStiffness: 1e6,
       contactEquationRelaxation: 4,
     }));
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMaterial, this.platformMaterial, {
-      friction: 0.5,
-      restitution: 0.02,
+      friction: 0.34,
+      restitution: 0.03,
     }));
     this.world.addContactMaterial(new CANNON.ContactMaterial(this.coinMaterial, this.pusherMaterial, {
-      friction: 0.55,
-      restitution: 0.01,
+      friction: 0.38,
+      restitution: 0.02,
     }));
 
     this.buildMachine();
     this.buildPusher();
     this.time = -Math.PI / (2 * PUSHER_SPEED);
     this.syncPusher(PUSHER_FRONT_MIN);
-    this.seedStackedCoins(24);
+    this.seedStackedCoins();
     window.addEventListener('resize', this.onResize);
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(this.container);
@@ -226,18 +277,35 @@ export class CoinPusher3DEngine {
 
     const lipW = (PLATFORM_W - 0.24) / 2;
     const lipMat = this.surfaceMat(PALETTE.gold, 0.22);
-    const lipL = new THREE.Mesh(new THREE.BoxGeometry(lipW, 0.055, 0.09), lipMat);
+    const lipL = new THREE.Mesh(new THREE.BoxGeometry(lipW, FRONT_LIP_H, 0.11), lipMat);
     this.addStatic(
       lipL,
-      new CANNON.Box(new CANNON.Vec3(lipW / 2, 0.0275, 0.045)),
-      -(lipW / 2 + 0.1), 0.0275, FRONT_Z,
+      new CANNON.Box(new CANNON.Vec3(lipW / 2, FRONT_LIP_H / 2, 0.055)),
+      -(lipW / 2 + 0.1), FRONT_LIP_H / 2, FRONT_Z,
       this.platformMaterial,
     );
-    const lipR = new THREE.Mesh(new THREE.BoxGeometry(lipW, 0.055, 0.09), lipMat);
+    const lipR = new THREE.Mesh(new THREE.BoxGeometry(lipW, FRONT_LIP_H, 0.11), lipMat);
     this.addStatic(
       lipR,
-      new CANNON.Box(new CANNON.Vec3(lipW / 2, 0.0275, 0.045)),
-      lipW / 2 + 0.1, 0.0275, FRONT_Z,
+      new CANNON.Box(new CANNON.Vec3(lipW / 2, FRONT_LIP_H / 2, 0.055)),
+      lipW / 2 + 0.1, FRONT_LIP_H / 2, FRONT_Z,
+      this.platformMaterial,
+    );
+
+    const bumperW = FRONT_BUMPER_W;
+    const bumperMat = this.surfaceMat(PALETTE.wall, 0.06);
+    const bumperL = new THREE.Mesh(new THREE.BoxGeometry(bumperW, FRONT_BUMPER_H, 0.08), bumperMat);
+    this.addStatic(
+      bumperL,
+      new CANNON.Box(new CANNON.Vec3(bumperW / 2, FRONT_BUMPER_H / 2, 0.04)),
+      -(PLATFORM_W / 2 - bumperW / 2 - 0.08), FRONT_BUMPER_H / 2, FRONT_BUMPER_Z,
+      this.platformMaterial,
+    );
+    const bumperR = new THREE.Mesh(new THREE.BoxGeometry(bumperW, FRONT_BUMPER_H, 0.08), bumperMat);
+    this.addStatic(
+      bumperR,
+      new CANNON.Box(new CANNON.Vec3(bumperW / 2, FRONT_BUMPER_H / 2, 0.04)),
+      PLATFORM_W / 2 - bumperW / 2 - 0.08, FRONT_BUMPER_H / 2, FRONT_BUMPER_Z,
       this.platformMaterial,
     );
 
@@ -305,14 +373,32 @@ export class CoinPusher3DEngine {
     this.world.addBody(this.pusherBody);
 
     this.pusherMat = this.surfaceMat(PALETTE.pusher, 0.18);
+    this.pusherMat.depthWrite = false;
+    this.pusherAccentMat = this.surfaceMat(PALETTE.pusher, 0.28);
+    this.pusherAccentMat.depthWrite = false;
+
     this.pusherMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(PLATFORM_W - 0.08, PUSHER_VISUAL_H, 1),
+      new THREE.BoxGeometry(PLATFORM_W - 0.08, PUSHER_UNDER_H, 1),
       this.pusherMat,
     );
-    this.pusherMesh.castShadow = false;
-    this.pusherMesh.receiveShadow = false;
-    this.pusherMesh.renderOrder = 1;
+    this.pusherMesh.castShadow = true;
+    this.pusherMesh.receiveShadow = true;
+    this.pusherMesh.renderOrder = 0;
     this.scene.add(this.pusherMesh);
+
+    this.pusherFaceMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.08, PUSHER_FACE_H, 0.028),
+      this.pusherAccentMat,
+    );
+    this.pusherFaceMesh.renderOrder = 1;
+    this.scene.add(this.pusherFaceMesh);
+
+    this.pusherLipMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATFORM_W - 0.06, 0.01, 0.05),
+      this.pusherAccentMat,
+    );
+    this.pusherLipMesh.renderOrder = 1;
+    this.scene.add(this.pusherLipMesh);
     this.syncPusher(PUSHER_FRONT_MIN);
   }
 
@@ -331,7 +417,9 @@ export class CoinPusher3DEngine {
     this.pusherBody.position.set(0, PUSHER_PHYSICS_Y, centerZ);
 
     this.pusherMesh.scale.set(1, 1, depth);
-    this.pusherMesh.position.set(0, PUSHER_VISUAL_Y, centerZ);
+    this.pusherMesh.position.set(0, PUSHER_UNDER_Y, centerZ);
+    this.pusherFaceMesh.position.set(0, PUSHER_SURFACE_Y + PUSHER_FACE_H / 2 - 0.002, frontZ - 0.014);
+    this.pusherLipMesh.position.set(0, PUSHER_SURFACE_Y + 0.005, frontZ - 0.02);
     this.pusherFrontZ = frontZ;
   }
 
@@ -344,10 +432,10 @@ export class CoinPusher3DEngine {
     const body = new CANNON.Body({
       mass: COIN_MASS,
       material: this.coinMaterial,
-      linearDamping: 0.42,
-      angularDamping: 0.88,
-      sleepSpeedLimit: 0.05,
-      sleepTimeLimit: 0.55,
+      linearDamping: 0.26,
+      angularDamping: 0.72,
+      sleepSpeedLimit: 0.03,
+      sleepTimeLimit: 0.75,
     });
     body.addShape(new CANNON.Cylinder(COIN_RADIUS, COIN_RADIUS, COIN_THICK, 12));
     body.position.set(x, y, z);
@@ -358,11 +446,11 @@ export class CoinPusher3DEngine {
 
     const mesh = new THREE.Mesh(
       new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, COIN_THICK, 14),
-      this.surfaceMat(PALETTE.gold, 0.22),
+      this.coinRenderMat,
     );
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.renderOrder = 3;
+    mesh.renderOrder = 20;
     this.scene.add(mesh);
     const entry: CoinEntry = { body, mesh, caught: false };
     this.coins.push(entry);
@@ -370,34 +458,74 @@ export class CoinPusher3DEngine {
   }
 
   private canPlaceCoin(x: number, z: number, y: number) {
-    const minDist = COIN_RADIUS * 1.85;
+    const minHoriz = COIN_RADIUS * 1.72;
     for (const { body } of this.coins) {
-      if (Math.hypot(body.position.x - x, body.position.z - z) < minDist && Math.abs(body.position.y - y) < COIN_THICK * 2) {
-        return false;
-      }
+      const horiz = Math.hypot(body.position.x - x, body.position.z - z);
+      const dy = Math.abs(body.position.y - y);
+      if (horiz < minHoriz && dy < COIN_THICK * 0.92) return false;
+      if (horiz < COIN_RADIUS * 0.5 && dy < COIN_THICK * 1.1) return false;
     }
     return true;
   }
 
-  private seedStackedCoins(count: number) {
-    const spanX = PLATFORM_W - 0.5;
-    const zMin = PUSHER_FRONT_MAX + 0.25;
-    const zMax = FRONT_Z - 0.5;
+  private placeSeedCoin(x: number, z: number, y: number) {
+    if (!this.canPlaceCoin(x, z, y)) return false;
+    const c = this.createCoin(x, y, z);
+    c.body.velocity.set(0, 0, 0);
+    c.body.angularVelocity.set(0, 0, 0);
+    c.body.sleep();
+    return true;
+  }
+
+  /** 台面中前段铺币 + 中央叠塔；推板完全伸出时与首排硬币相切 */
+  private seedStackedCoins() {
     let placed = 0;
-    for (let layer = 0; layer < 3 && placed < count; layer++) {
-      for (let row = 0; row < 4 && placed < count; row++) {
-        for (let col = 0; col < 7 && placed < count; col++) {
-          const x = -spanX / 2 + col * (spanX / 6) + (layer % 2) * 0.07;
-          const z = zMin + (row / 3) * (zMax - zMin);
-          const y = COIN_REST_Y + layer * COIN_THICK * 1.04;
-          if (!this.canPlaceCoin(x, z, y)) continue;
-          const c = this.createCoin(x, y, z);
-          c.body.velocity.set(0, 0, 0);
-          c.body.angularVelocity.set(0, 0, 0);
-          c.body.sleep();
-          placed += 1;
+    const spanX = PLATFORM_W - 0.48;
+    const zMin = seedCoinZMin();
+    const zMax = FRONT_Z - 0.42;
+    const towerZ = zMin + (zMax - zMin) * 0.48;
+
+    for (let layer = 0; layer < 3 && placed < SEED_COIN_COUNT; layer++) {
+      for (let row = 0; row < 5 && placed < SEED_COIN_COUNT; row++) {
+        for (let col = 0; col < 10 && placed < SEED_COIN_COUNT; col++) {
+          const x = -spanX / 2 + col * (spanX / 9) + (layer % 2) * 0.05 + (Math.random() - 0.5) * 0.03;
+          const z = zMin + (row / 4) * (zMax - zMin) + (Math.random() - 0.5) * 0.04;
+          const y = COIN_REST_Y + layer * COIN_THICK * 1.03;
+          if (Math.hypot(x, z - towerZ) < COIN_RADIUS * 2.4) continue;
+          if (this.placeSeedCoin(x, z, y)) placed += 1;
         }
       }
+    }
+
+    for (let layer = 0; layer < TOWER_LAYERS && placed < SEED_COIN_COUNT + 75; layer++) {
+      const y = COIN_REST_Y + layer * COIN_THICK * 1.02;
+      const ringR = layer < 18 ? COIN_RADIUS * 1.75 : (layer < 26 ? COIN_RADIUS * 1.28 : COIN_RADIUS * 1.05);
+      const ringCount = layer < 18 ? 6 : (layer < 26 ? 4 : 1);
+      if (towerZ >= zMin && this.placeSeedCoin(0, towerZ, y)) placed += 1;
+      if (ringCount > 1) {
+        for (let i = 0; i < ringCount; i++) {
+          const a = (i / ringCount) * Math.PI * 2 + (layer % 2) * 0.35;
+          const x = Math.cos(a) * ringR;
+          const z = towerZ + Math.sin(a) * ringR;
+          if (z < zMin) continue;
+          if (this.placeSeedCoin(x, z, y)) placed += 1;
+        }
+      }
+    }
+
+    for (let i = 0; i < 14 && placed < SEED_COIN_COUNT + 50; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = side * (PLATFORM_W / 2 - 0.55) + (Math.random() - 0.5) * 0.08;
+      const z = zMin + Math.random() * (zMax - zMin);
+      const y = COIN_REST_Y + (i % 3) * COIN_THICK * 1.03;
+      if (this.placeSeedCoin(x, z, y)) placed += 1;
+    }
+
+    for (let col = 0; col < 8; col++) {
+      const x = -spanX / 2 + col * (spanX / 7) + 0.02;
+      const z = zMax - 0.02;
+      if (Math.abs(x) < DROP_SLOT_HALF_W + 0.04) continue;
+      if (this.placeSeedCoin(x, z, COIN_REST_Y)) placed += 1;
     }
   }
 
@@ -406,37 +534,72 @@ export class CoinPusher3DEngine {
     const dropZ = DROP_Z_MIN + Math.random() * (DROP_Z_MAX - DROP_Z_MIN);
     this.createCoin(
       x,
-      1.5,
+      1.35,
       dropZ,
-      (Math.random() - 0.5) * 0.06,
-      -0.08,
-      0.02 + Math.random() * 0.03,
+      (Math.random() - 0.5) * 0.04,
+      -0.05,
+      0.01 + Math.random() * 0.02,
     );
   }
 
   private applyPusherDrive(frontZ: number) {
-    if (Math.abs(this.pusherVelZ) < 0.008) return;
+    if (Math.abs(this.pusherVelZ) < 0.006) return;
     const back = BACK_INNER_Z;
+    const pushFront = frontZ + COIN_RADIUS * 0.75;
 
     for (const { body } of this.coins) {
-      if (body.sleepState === CANNON.Body.SLEEPING && this.pusherVelZ > 0) {
-        const pz = body.position.z;
-        if (pz >= back && pz <= frontZ + 0.02) body.wakeUp();
-      }
-      if (Math.abs(body.position.x) > PUSHER_HALF_W + COIN_RADIUS) continue;
       const pz = body.position.z;
-      if (pz < back - 0.02 || pz > frontZ + COIN_RADIUS * 0.6) continue;
-      if (body.position.y > COIN_REST_Y + COIN_THICK * 4) continue;
+      const px = body.position.x;
+      if (Math.abs(px) > PUSHER_HALF_W + COIN_RADIUS * 1.2) continue;
+      if (pz < back - 0.04 || pz > pushFront) continue;
 
-      if (this.pusherVelZ > 0 && pz <= frontZ + 0.02) {
-        const target = this.pusherVelZ * 0.92;
+      if (body.sleepState === CANNON.Body.SLEEPING) body.wakeUp();
+
+      if (this.pusherVelZ > 0 && pz <= pushFront) {
+        const target = this.pusherVelZ * 1.12;
         if (body.velocity.z < target) body.velocity.z = target;
+        if (Math.abs(px) < COIN_RADIUS * 3.5) {
+          body.velocity.z = Math.max(body.velocity.z, target * 1.05);
+        }
+      } else if (this.pusherVelZ < 0 && pz <= frontZ + COIN_RADIUS * 0.35) {
+        const target = this.pusherVelZ * 0.65;
+        if (body.velocity.z > target) body.velocity.z = target;
       }
     }
   }
 
+  private isInPusherZone(z: number) {
+    return z >= BACK_INNER_Z - 0.06 && z <= this.pusherFrontZ + COIN_RADIUS * 0.45;
+  }
+
+  private snapCoinOnPusher(body: CANNON.Body) {
+    if (!this.isInPusherZone(body.position.z)) return;
+    const spd = body.velocity.length();
+    const ang = body.angularVelocity.length();
+    if (spd > 0.12 || ang > 0.25) return;
+    if (body.position.y < COIN_REST_Y - 0.008) {
+      body.position.y = COIN_REST_Y;
+    }
+    if (ang < 0.08) {
+      body.quaternion.set(0, 0, 0, 1);
+      body.angularVelocity.set(0, 0, 0);
+    }
+  }
+
+  private coinDisplayY(body: CANNON.Body): number {
+    const y = body.position.y;
+    if (this.isInPusherZone(body.position.z)) {
+      return Math.max(y, COIN_REST_Y);
+    }
+    return Math.max(y, COIN_REST_Y - COIN_THICK * 0.2);
+  }
+
   private settleCoins() {
     for (const { body } of this.coins) {
+      this.snapCoinOnPusher(body);
+      if (body.position.z > FRONT_Z - FRONT_DAMP_ZONE && body.velocity.z > 0) {
+        body.velocity.z *= FRONT_DAMP_MUL;
+      }
       const spd = body.velocity.length();
       const ang = body.angularVelocity.length();
       if (spd < 0.06 && ang < 0.12) {
@@ -461,7 +624,6 @@ export class CoinPusher3DEngine {
     this.world.removeBody(entry.body);
     this.scene.remove(entry.mesh);
     entry.mesh.geometry.dispose();
-    (entry.mesh.material as THREE.Material).dispose();
     const idx = this.coins.indexOf(entry);
     if (idx >= 0) this.coins.splice(idx, 1);
   }
@@ -503,9 +665,13 @@ export class CoinPusher3DEngine {
   private handleCatch(entry: CoinEntry) {
     if (entry.caught) return;
     const { x, z, y } = entry.body.position;
-    const lowEnough = y < COIN_REST_Y + COIN_THICK * 2.2;
+    const { velocity } = entry.body;
+    const lowEnough = y < COIN_REST_Y + COIN_THICK * CATCH_HEIGHT_MULT;
+    const atEdge = z >= FRONT_Z - CATCH_EDGE_Z;
+    const inDropSlot = Math.abs(x) <= DROP_SLOT_HALF_W;
+    const pushedOff = velocity.z > CATCH_VZ_MIN || (atEdge && velocity.z > CATCH_VZ_EDGE);
 
-    if (z >= FRONT_Z - 0.04 && lowEnough && Math.abs(x) <= PLATFORM_W / 2 - 0.08) {
+    if (atEdge && lowEnough && inDropSlot && pushedOff) {
       this.startCatch(entry);
     } else if (y < -1.2 || z > FRONT_Z + 1.0) {
       this.removeCoin(entry);
@@ -516,7 +682,7 @@ export class CoinPusher3DEngine {
     for (const entry of this.coins) {
       if (entry.falling) continue;
       const { body, mesh } = entry;
-      mesh.position.set(body.position.x, body.position.y, body.position.z);
+      mesh.position.set(body.position.x, this.coinDisplayY(body), body.position.z);
       mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
     }
   }
@@ -576,12 +742,15 @@ export class CoinPusher3DEngine {
     for (const entry of this.coins) {
       this.scene.remove(entry.mesh);
       entry.mesh.geometry.dispose();
-      (entry.mesh.material as THREE.Material).dispose();
       if (!entry.falling) this.world.removeBody(entry.body);
     }
     this.coins = [];
+    this.coinRenderMat.dispose();
     this.pusherMesh.geometry.dispose();
+    this.pusherFaceMesh.geometry.dispose();
+    this.pusherLipMesh.geometry.dispose();
     this.pusherMat.dispose();
+    this.pusherAccentMat.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -589,4 +758,8 @@ export class CoinPusher3DEngine {
   }
 }
 
-export const COIN_PUSHER_LIMITS = { MAX_SHARDS, INIT_CREDITS: 20, MAX_DROPS: 60, DROP_COST: 1 };
+export const COIN_PUSHER_LIMITS = {
+  MAX_SHARDS_EARNED: MAX_SHARDS,
+  DROP_COST_SHARDS: 1,
+  RAIN_MILESTONE: 20,
+};

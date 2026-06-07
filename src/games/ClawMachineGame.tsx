@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { setupPixelCanvas } from '@/games/pixelCanvas';
 import { CLAW_PRIZES, type ClawPrizeDef } from '@/data/clawPrizes';
+import { useGameStore } from '@/store/gameStore';
 import { vibrate } from '@/utils/sound';
 
 const W = 360;
 const H = 480;
-const GRABS = 6;
+/** 每抓一次消耗的数据碎片 */
+export const CLAW_GRAB_COST = 3;
 const RAIL_Y = 86;
 const CLAW_HOME_Y = 108;
 const FLOOR_Y = 408;
@@ -23,13 +25,11 @@ type Phase = 'move' | 'drop' | 'grab' | 'rise' | 'carry' | 'release' | 'return';
 /** 单次抓取预定结果：空抓 / 脱钩（夹住后滑落）/ 抓中 */
 type GrabOutcome = 'miss' | 'slip' | 'success';
 
-function buildGrabSchedule(): GrabOutcome[] {
-  const list: GrabOutcome[] = ['miss', 'miss', 'slip', 'slip', 'success', 'success'];
-  for (let i = list.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [list[i], list[j]] = [list[j], list[i]];
-  }
-  return list;
+function rollGrabOutcome(): GrabOutcome {
+  const r = Math.random();
+  if (r < 0.34) return 'miss';
+  if (r < 0.67) return 'slip';
+  return 'success';
 }
 
 interface ClawMachineGameProps {
@@ -209,30 +209,21 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
   const releaseT = useRef(0);
   const releasePrizeY = useRef(0);
   const carrySlipChecked = useRef(false);
-  const grabSchedule = useRef(buildGrabSchedule());
-  const grabAttemptIndex = useRef(0);
   const currentOutcome = useRef<GrabOutcome>('miss');
   const fallingPrizes = useRef<FallingPrize[]>([]);
   const spriteMap = useRef<Record<string, HTMLImageElement>>({});
   const animRef = useRef(0);
   const pulseRef = useRef(0);
 
-  const [grabsLeft, setGrabsLeft] = useState(GRABS);
   const [totalShards, setTotalShards] = useState(0);
-  const [message, setMessage] = useState('◀ ▶ 移动爪子对准玩偶，按抓取');
+  const [message, setMessage] = useState(`◀ ▶ 移动爪子对准玩偶 · 每抓 ${CLAW_GRAB_COST} 碎片`);
+  const walletShards = useGameStore((s) => s.shards);
   const [aimLabel, setAimLabel] = useState('当前瞄准：—');
-  const [showResult, setShowResult] = useState(false);
   const [clawPhase, setClawPhase] = useState<Phase>('move');
   const [loading, setLoading] = useState(true);
-  const [caughtPrizeIds, setCaughtPrizeIds] = useState<string[]>([]);
-  const grabsLeftRef = useRef(GRABS);
   const totalRef = useRef(0);
 
   const prizePile = useMemo(() => buildPrizePile(), []);
-
-  const caughtPrizes = caughtPrizeIds
-    .map((id) => CLAW_PRIZES.find((p) => p.id === id))
-    .filter((p): p is ClawPrizeDef => !!p);
 
   const findAimTarget = useCallback((x: number): PrizeInstance | null => {
     let best: PrizeInstance | null = null;
@@ -258,19 +249,19 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
   }, [findAimTarget]);
 
   const finishTurn = useCallback(() => {
-    grabsLeftRef.current -= 1;
-    setGrabsLeft(grabsLeftRef.current);
     grabbed.current = null;
     targetUid.current = null;
     phase.current = 'move';
     setClawPhase('move');
     refreshAimLabel(clawX.current);
-    if (grabsLeftRef.current <= 0 || takenUids.current.size >= prizePile.length) {
-      setShowResult(true);
-      setMessage('本局结束');
-    } else {
-      setMessage(`剩余 ${grabsLeftRef.current} 次 · 抓稳后运到左下 DROP`);
+    if (takenUids.current.size >= prizePile.length) {
+      takenUids.current.clear();
+      fallingPrizes.current = [];
     }
+    const left = useGameStore.getState().shards;
+    setMessage(left >= CLAW_GRAB_COST
+      ? `本局 +${totalRef.current} · 再抓 ${CLAW_GRAB_COST} 碎片/次`
+      : '碎片不足，请收手结算');
   }, [prizePile.length, refreshAimLabel]);
 
   const moveClaw = useCallback((delta: number) => {
@@ -280,9 +271,14 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
   }, [refreshAimLabel]);
 
   const tryGrab = useCallback(() => {
-    if (phase.current !== 'move' || grabsLeftRef.current <= 0 || loading) return;
-    currentOutcome.current = grabSchedule.current[grabAttemptIndex.current] ?? 'miss';
-    grabAttemptIndex.current += 1;
+    if (phase.current !== 'move' || loading) return;
+    const state = useGameStore.getState();
+    if (state.shards < CLAW_GRAB_COST) {
+      setMessage('数据碎片不足，无法抓取');
+      return;
+    }
+    useGameStore.setState({ shards: state.shards - CLAW_GRAB_COST });
+    currentOutcome.current = rollGrabOutcome();
     const target = findAimTarget(clawX.current);
     targetUid.current = target?.uid ?? null;
     targetDropY.current = target ? target.y - 22 : FLOOR_Y - 20;
@@ -395,7 +391,6 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
             grabbed.current = null;
             totalRef.current += inst.def.shards;
             setTotalShards(totalRef.current);
-            setCaughtPrizeIds((c) => [...c, inst.def.id]);
             setMessage(`${inst.def.name} 掉入 DROP！+${inst.def.shards}`);
             vibrate(28);
             phase.current = 'return';
@@ -426,8 +421,8 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
       ctx.strokeStyle = '#ff6eb4';
       ctx.strokeRect(22, 22, 118, 36);
       drawUiText(ctx, `SCORE ${String(totalRef.current).padStart(6, '0')}`, 32, 44, '#fff', 10);
-      drawUiText(ctx, `池 ${prizePile.length - takenUids.current.size}/${prizePile.length}`, 200, 44, '#92efe7', 10);
-      drawUiText(ctx, `剩余 ${grabsLeftRef.current} 次`, 280, 44, '#ffd86b', 10, 'right');
+      drawUiText(ctx, `池 ${prizePile.length - takenUids.current.size}/${prizePile.length}`, 168, 44, '#92efe7', 10);
+      drawUiText(ctx, `碎片 ${useGameStore.getState().shards}`, 280, 44, '#ffd86b', 10, 'right');
 
       const aimTarget = phase.current === 'move' ? findAimTarget(clawX.current) : null;
       const sorted = prizePile
@@ -486,6 +481,8 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
     return () => cancelAnimationFrame(animRef.current);
   }, [aimLabel, finishTurn, findAimTarget, loading, prizePile]);
 
+  const canGrab = walletShards >= CLAW_GRAB_COST && clawPhase === 'move' && !loading;
+
   return (
     <div className="arcade-game-wrap claw-game-wrap">
       <button type="button" className="btn-secondary arcade-game-back" onClick={() => onExit(totalRef.current)}>
@@ -500,38 +497,19 @@ export function ClawMachineGame({ onExit }: ClawMachineGameProps) {
             type="button"
             className="btn-primary claw-btn grab-btn claw-btn-overlay claw-grab-overlay"
             onClick={tryGrab}
-            disabled={grabsLeft <= 0 || clawPhase !== 'move' || loading}
+            disabled={!canGrab}
           >
-            抓取
+            抓取! (-{CLAW_GRAB_COST})
           </button>
           <button type="button" className="btn-secondary claw-btn claw-btn-overlay" onClick={() => moveClaw(1)} disabled={clawPhase !== 'move'} aria-label="右移">▶</button>
         </div>
       </div>
-      <p className="arcade-hint claw-depth-hint">每局 6 次 · 2 抓中 / 2 脱钩 / 2 空抓 · 左右对准后抓取</p>
+      <p className="arcade-hint claw-depth-hint">每抓 {CLAW_GRAB_COST} 碎片 · 次数不限 · 抓稳后运到左下 DROP · 随时可收手结算</p>
       <div className="arcade-game-actions">
         <button type="button" className="btn-secondary" onClick={() => onExit(totalRef.current)}>
           收手结算 (+{totalShards})
         </button>
       </div>
-      {showResult && (
-        <div className="arcade-result-overlay">
-          <div className="arcade-result-card crt-enter">
-            <h3>抓娃娃结算</h3>
-            <p className="arcade-result-shards">+{totalShards} 数据碎片</p>
-            <div className="claw-result-grid">
-              {caughtPrizes.length > 0 ? caughtPrizes.map((prize, i) => (
-                <div key={`${prize.id}-${i}`} className="claw-result-item">
-                  <img src={prize.image} alt={prize.name} />
-                  <span>{prize.name}</span>
-                </div>
-              )) : <p className="claw-result-empty">这次没抓到玩偶，下次再来。</p>}
-            </div>
-            <button type="button" className="btn-primary" onClick={() => onExit(totalRef.current)}>
-              收入囊中
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -35,8 +35,12 @@ export const TITLE_EXPLANATIONS: Record<string, string> = {
   医疗影像拆解者: '能把一片混沌看成一幅画，再把画还原成故事。',
   面目模糊的异常数据体: '像一团被打码的温柔雾气，谁也说不清里面藏着什么形状。',
   '404号房间首席架构师': '房间的每一寸像素都听过你的名字，它们一致推选你当班长。',
+  矢志不渝的爱: '某些名字写进终端深处后，就再也不会被系统洗掉。',
   默认访客: '还没来得及被世界定义，先以访客身份报到。',
 };
+
+export const TERMINAL_LOVE_TITLE = '矢志不渝的爱';
+export const TERMINAL_LOVE_TITLE_SHARDS = 99;
 
 export const EASTER_EGG_TITLES = [
   { title: '崇尚Agent协作的探路者', probability: 0.01 },

@@ -8,7 +8,7 @@ import { MUSIC_BOX } from '@/data/musicBox';
 import { TUTORIAL_STEPS } from '@/data/tutorial';
 import {
   CYBER_PREFIXES, EASTER_EGG_TITLES, POSITIVE_PREFIXES,
-  RANDOM_EVENTS, TITLES, TITLE_EXPLANATIONS,
+  RANDOM_EVENTS, TERMINAL_LOVE_TITLE, TERMINAL_LOVE_TITLE_SHARDS, TITLES, TITLE_EXPLANATIONS,
 } from '@/data/titles';
 import { pickTrashCollectible, calculateOfflineSettlement } from '@/utils/offline';
 import { isMidnightMode, isWeekend, randomPick, todayKey } from '@/utils/time';
@@ -59,6 +59,7 @@ interface GameActions {
   dismissOnboarding: () => void;
   completeHint: (key: HintKey) => void;
   dismissActiveHint: () => void;
+  grantTerminalLoveTitle: () => boolean;
 }
 
 export interface HotZoneResult {
@@ -765,6 +766,22 @@ export const useGameStore = create<GameState & GameActions>()(
         });
       },
       dismissActiveHint: () => set({ activeHint: null }),
+
+      grantTerminalLoveTitle: () => {
+        const profile = get().profile;
+        if (!profile || profile.title === TERMINAL_LOVE_TITLE) return false;
+        set({
+          profile: {
+            ...profile,
+            prefix: '',
+            title: TERMINAL_LOVE_TITLE,
+            fullTitle: TERMINAL_LOVE_TITLE,
+            titleExplanation: TITLE_EXPLANATIONS[TERMINAL_LOVE_TITLE] ?? '',
+          },
+          shards: get().shards + TERMINAL_LOVE_TITLE_SHARDS,
+        });
+        return true;
+      },
     }),
     { name: STORAGE_KEY },
   ),

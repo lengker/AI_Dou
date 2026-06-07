@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CoinPusher3DEngine, COIN_PUSHER_LIMITS } from '@/games/coinPusher3D';
 import { Plinko2DEngine } from '@/games/plinko2D';
+import { useGameStore } from '@/store/gameStore';
 import { vibrate } from '@/utils/sound';
 
 const SYMBOLS = ['7', '$', '★', '♥', '▣'] as const;
@@ -22,6 +23,16 @@ function emptyGrid(): Grid3x3 {
     ['?', '?', '?'],
     ['?', '?', '?'],
   ];
+}
+
+function forceJackpotGrid(): Grid3x3 {
+  const grid = [
+    [pickSymbol(), pickSymbol(), pickSymbol()],
+    [pickSymbol(), pickSymbol(), pickSymbol()],
+    [pickSymbol(), pickSymbol(), pickSymbol()],
+  ];
+  for (let r = 0; r < 3; r++) grid[r][r] = JACKPOT_SYM;
+  return grid;
 }
 
 function checkThreeLine(grid: Grid3x3): { jackpot: boolean; anyLine: boolean } {
@@ -48,49 +59,53 @@ function checkThreeLine(grid: Grid3x3): { jackpot: boolean; anyLine: boolean } {
 }
 
 export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
+  const walletShards = useGameStore((s) => s.shards);
   const plinkoCanvasRef = useRef<HTMLCanvasElement>(null);
   const mount3dRef = useRef<HTMLDivElement>(null);
   const plinkoRef = useRef<Plinko2DEngine | null>(null);
   const engine3dRef = useRef<CoinPusher3DEngine | null>(null);
-  const creditsRef = useRef(COIN_PUSHER_LIMITS.INIT_CREDITS);
   const dropsRef = useRef(0);
+  const dropsSinceArmRef = useRef(0);
+  const bonusRainArmedRef = useRef(false);
   const bonusPendingRef = useRef(false);
 
-  const [credits, setCredits] = useState(COIN_PUSHER_LIMITS.INIT_CREDITS);
-  const [shards, setShards] = useState(0);
+  const [earned, setEarned] = useState(0);
   const [drops, setDrops] = useState(0);
-  const [showResult, setShowResult] = useState(false);
   const [jackpotMode, setJackpotMode] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const [showLottery, setShowLottery] = useState(false);
   const [grid, setGrid] = useState<Grid3x3>(emptyGrid);
   const [lotterySpinning, setLotterySpinning] = useState(false);
   const [lotteryMsg, setLotteryMsg] = useState('');
 
-  const syncCredits = useCallback((n: number) => {
-    creditsRef.current = n;
-    setCredits(n);
-    engine3dRef.current?.setCredits(n);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 2200);
   }, []);
 
-  const checkSessionEnd = useCallback(() => {
-    if (
-      engine3dRef.current?.isMaxShards() ||
-      dropsRef.current >= COIN_PUSHER_LIMITS.MAX_DROPS ||
-      (creditsRef.current < COIN_PUSHER_LIMITS.DROP_COST && dropsRef.current > 0 && !plinkoRef.current?.isJackpotActive())
-    ) {
-      setShowResult(true);
-    }
-  }, []);
+  const startCoinRain = useCallback((message = '★ 连线达成 · 投币口爆币瀑布 ★') => {
+    if (plinkoRef.current?.isJackpotActive()) return;
+    setJackpotMode(true);
+    showToast(message);
+    vibrate(80);
+    plinkoRef.current?.startJackpotRain(50, 3);
+    const watchEnd = window.setInterval(() => {
+      if (!plinkoRef.current?.isJackpotActive()) {
+        window.clearInterval(watchEnd);
+        setJackpotMode(false);
+      }
+    }, 200);
+  }, [showToast]);
 
-  const runLottery3x3 = useCallback(() => {
+  const runLottery3x3 = useCallback((forceJackpot = false) => {
     setShowLottery(true);
     setLotterySpinning(true);
-    setLotteryMsg('3×3 抽奖启动...');
+    setLotteryMsg(forceJackpot ? 'BONUS 连线蓄力中...' : '3×3 抽奖启动...');
     setGrid(emptyGrid());
 
     let ticks = 0;
-    const spin = setInterval(() => {
+    const spin = window.setInterval(() => {
       setGrid([
         [pickSymbol(), pickSymbol(), pickSymbol()],
         [pickSymbol(), pickSymbol(), pickSymbol()],
@@ -98,13 +113,15 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
       ]);
       ticks += 1;
       if (ticks >= 16) {
-        clearInterval(spin);
-        const final: Grid3x3 = [
-          [pickSymbol(), pickSymbol(), pickSymbol()],
-          [pickSymbol(), pickSymbol(), pickSymbol()],
-          [pickSymbol(), pickSymbol(), pickSymbol()],
-        ];
-        if (Math.random() < 0.1) {
+        window.clearInterval(spin);
+        const final = forceJackpot
+          ? forceJackpotGrid()
+          : [
+              [pickSymbol(), pickSymbol(), pickSymbol()],
+              [pickSymbol(), pickSymbol(), pickSymbol()],
+              [pickSymbol(), pickSymbol(), pickSymbol()],
+            ] as Grid3x3;
+        if (!forceJackpot && Math.random() < 0.1) {
           for (let r = 0; r < 3; r++) final[r][r] = JACKPOT_SYM;
         }
         setGrid(final);
@@ -115,22 +132,17 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
           setLotteryMsg('★ 三连 JACKPOT! 投币口爆币瀑布 ★');
           engine3dRef.current?.addBonusShards(5);
           vibrate(80);
-          setTimeout(() => {
+          if (forceJackpot) {
+            bonusRainArmedRef.current = false;
+            dropsSinceArmRef.current = 0;
+          }
+          window.setTimeout(() => {
             setShowLottery(false);
-            setJackpotMode(true);
-            plinkoRef.current?.startJackpotRain(50, 3);
-            const watchEnd = setInterval(() => {
-              if (!plinkoRef.current?.isJackpotActive()) {
-                clearInterval(watchEnd);
-                setJackpotMode(false);
-                checkSessionEnd();
-              }
-            }, 200);
+            startCoinRain(forceJackpot ? '★ BONUS 必中连线 · 投币口爆币瀑布 ★' : '★ BONUS 三连 · 投币口爆币瀑布 ★');
           }, 1400);
         } else if (anyLine) {
-          setLotteryMsg('三连! +2 碎片 +3 积分');
+          setLotteryMsg('三连! 额外 +2 碎片');
           engine3dRef.current?.addBonusShards(2);
-          syncCredits(creditsRef.current + 3);
           vibrate(40);
         } else {
           setLotteryMsg('未三连，继续推币');
@@ -138,7 +150,10 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
         bonusPendingRef.current = false;
       }
     }, 70);
-  }, [checkSessionEnd, syncCredits]);
+  }, [startCoinRain]);
+
+  const runLotteryRef = useRef(runLottery3x3);
+  runLotteryRef.current = runLottery3x3;
 
   useEffect(() => {
     const canvas = plinkoCanvasRef.current;
@@ -146,14 +161,10 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
     if (!canvas || !mount3d) return;
 
     const engine3d = new CoinPusher3DEngine(mount3d, {
-      onCredits: syncCredits,
-      onShards: setShards,
-      onNormalCatch: () => {
-        vibrate(25);
-        checkSessionEnd();
-      },
+      onCredits: () => {},
+      onShards: setEarned,
+      onNormalCatch: () => vibrate(25),
     });
-    engine3d.setCredits(creditsRef.current);
     engine3dRef.current = engine3d;
 
     const plinko = new Plinko2DEngine(canvas, {
@@ -161,7 +172,8 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
         if (bonusPendingRef.current) return;
         bonusPendingRef.current = true;
         vibrate(50);
-        runLottery3x3();
+        const forceJackpot = bonusRainArmedRef.current;
+        runLotteryRef.current(forceJackpot);
       },
       onLanded: (normX) => {
         engine3d.receiveCoin(normX);
@@ -175,22 +187,43 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
       plinkoRef.current = null;
       engine3dRef.current = null;
     };
-  }, [checkSessionEnd, runLottery3x3, syncCredits]);
+  }, []);
+
+  const spendDropShard = () => {
+    const state = useGameStore.getState();
+    if (state.shards < COIN_PUSHER_LIMITS.DROP_COST_SHARDS) return false;
+    useGameStore.setState({ shards: state.shards - COIN_PUSHER_LIMITS.DROP_COST_SHARDS });
+    return true;
+  };
 
   const handleDrop = () => {
-    if (jackpotMode) return;
-    if (creditsRef.current < COIN_PUSHER_LIMITS.DROP_COST) return;
-    if (dropsRef.current >= COIN_PUSHER_LIMITS.MAX_DROPS) return;
-    if (engine3dRef.current?.isMaxShards()) return;
+    if (jackpotMode || showLottery) return;
+    if (earned >= COIN_PUSHER_LIMITS.MAX_SHARDS_EARNED || engine3dRef.current?.isMaxShards()) {
+      showToast('本局收益已满，请收手结算');
+      return;
+    }
+    if (!spendDropShard()) {
+      showToast('数据碎片不足，无法投币');
+      return;
+    }
 
-    syncCredits(creditsRef.current - COIN_PUSHER_LIMITS.DROP_COST);
     dropsRef.current += 1;
+    dropsSinceArmRef.current += 1;
+    if (dropsSinceArmRef.current >= COIN_PUSHER_LIMITS.RAIN_MILESTONE) {
+      bonusRainArmedRef.current = true;
+    }
+
     setDrops(dropsRef.current);
     plinkoRef.current?.dropCoin();
     vibrate(15);
   };
 
-  const exitWithShards = () => onExit(engine3dRef.current?.shardsEarned ?? shards);
+  const exitWithShards = () => onExit(engine3dRef.current?.shardsEarned ?? earned);
+  const maxEarned = earned >= COIN_PUSHER_LIMITS.MAX_SHARDS_EARNED;
+  const canDrop = walletShards >= COIN_PUSHER_LIMITS.DROP_COST_SHARDS
+    && !jackpotMode
+    && !showLottery
+    && !maxEarned;
 
   return (
     <div className="arcade-game-wrap coin-pusher-hybrid-wrap">
@@ -199,10 +232,12 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
       </button>
 
       <div className="coin-pusher-hud pixel-font">
-        <span className="hud-cyan">积分 {credits}</span>
-        <span className="hud-gold">碎片 +{shards}</span>
-        <span className="hud-dim">投币 {drops}/{COIN_PUSHER_LIMITS.MAX_DROPS}</span>
+        <span className="hud-cyan">碎片 {walletShards}</span>
+        <span className="hud-gold">本局 +{earned}</span>
+        <span className="hud-dim">已投 {drops}</span>
       </div>
+
+      {toast && <div className="coin-pusher-toast pixel-font">{toast}</div>}
 
       {jackpotMode && (
         <div className="coin-jackpot-banner pixel-font">★ 投币口爆币瀑布 ★</div>
@@ -217,26 +252,19 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
         <div ref={mount3dRef} className="coin-pusher-3d-mount coin-pusher-3d-bottom" />
       </div>
 
-      <p className="arcade-hint">
-        点击上方投币 · 投币口 180° 摆动 · BONUS 抽奖且硬币仍落台 · 下方 3D 推板落碟得分
-      </p>
+      <p className="arcade-hint">每投 1 枚消耗 1 数据碎片 · 落碟得分 · 随时可收手结算</p>
 
       <div className="arcade-game-actions">
         <button
           type="button"
           className="btn-primary claw-btn grab-btn"
           onClick={handleDrop}
-          disabled={
-            credits < COIN_PUSHER_LIMITS.DROP_COST ||
-            drops >= COIN_PUSHER_LIMITS.MAX_DROPS ||
-            jackpotMode ||
-            showLottery
-          }
+          disabled={!canDrop}
         >
-          投币!
+          投币! (-1 碎片)
         </button>
         <button type="button" className="btn-secondary" onClick={exitWithShards}>
-          收手结算 (+{shards})
+          收手结算 (+{earned})
         </button>
       </div>
 
@@ -257,21 +285,6 @@ export function CoinPusherGame({ onExit }: CoinPusherGameProps) {
                 继续推币
               </button>
             )}
-          </div>
-        </div>
-      )}
-
-      {showResult && (
-        <div className="arcade-result-overlay">
-          <div className="arcade-result-card crt-enter">
-            <h3>本局结算</h3>
-            <p className="arcade-result-shards">+{shards} 数据碎片</p>
-            <p style={{ color: '#888', fontSize: 12, marginBottom: 16 }}>
-              剩余积分 {credits} · 共投 {drops} 枚
-            </p>
-            <button type="button" className="btn-primary" onClick={exitWithShards}>
-              收入囊中
-            </button>
           </div>
         </div>
       )}

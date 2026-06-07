@@ -35,8 +35,8 @@ export interface Plinko2DCallbacks {
   onLanded: (normX: number) => void;
 }
 
-const GRAVITY = 0.42;
-const FRICTION = 0.985;
+const GRAVITY = 0.28;
+const FRICTION = 0.988;
 const PEG_R = 3.5;
 const COIN_R = COIN_DIAMETER_2D / 2;
 const ROWS = 7;
@@ -121,8 +121,8 @@ export class Plinko2DEngine {
     this.coins.push({
       x: sx,
       y: 12,
-      vx: (Math.random() - 0.5) * 0.2,
-      vy: 0.14,
+      vx: (Math.random() - 0.5) * 0.12,
+      vy: 0.08,
       r: COIN_R,
       id: this.nextId++,
       stuckFrames: 0,
@@ -170,8 +170,8 @@ export class Plinko2DEngine {
       c.vx -= (1 + rest) * dot * nx;
       c.vy -= (1 + rest) * dot * ny;
     }
-    c.vx += nx * 0.32;
-    c.vy += Math.abs(ny) * 0.07 + 0.05;
+    c.vx += nx * 0.22;
+    c.vy += Math.abs(ny) * 0.05 + 0.03;
   }
 
   /** 经过 BONUS 只触发抽奖，硬币继续下落进 3D */
@@ -247,17 +247,10 @@ export class Plinko2DEngine {
     }
   }
 
-  /** 2D 摆动投币口 + 示意弧线 */
+  /** 2D 摆动投币口 */
   private drawMovingSlot() {
     const ctx = this.ctx;
-    const cx = PLINKO_W / 2;
     const sx = this.slotX();
-
-    ctx.strokeStyle = 'rgba(0, 255, 204, 0.22)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, 10, PLAY_WIDTH / 2 - 22, 0, Math.PI);
-    ctx.stroke();
 
     ctx.fillStyle = '#00ffcc';
     ctx.fillRect(sx - 4, 8, 8, 8);
