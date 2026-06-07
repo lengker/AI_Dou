@@ -84,7 +84,7 @@ export function PetChatPanel({ open, onClose, profile }: PetChatPanelProps) {
             发送
           </button>
         </div>
-        <p className="ai-hint">由千问驱动 · 分身记得你的称号与人设</p>
+        <p className="ai-hint">离线文案引擎驱动 · 分身记得你的称号与人设</p>
       </div>
     </div>
   );

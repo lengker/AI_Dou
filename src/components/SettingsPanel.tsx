@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ACHIEVEMENTS } from '@/data/titles';
 import { useGameStore } from '@/store/gameStore';
 import { Overlay } from '@/components/Overlay';
@@ -24,16 +25,15 @@ export function SettingsPanel({
   const achievements = useGameStore((s) => s.achievements);
   const profile = useGameStore((s) => s.profile);
   const startRemapping = useGameStore((s) => s.startRemapping);
+  const restartGame = useGameStore((s) => s.restartGame);
+  const [confirmRestart, setConfirmRestart] = useState(false);
 
   const handleRemap = () => {
     if (shards < 30) { onToast('数据碎片不足。'); return; }
     if (startRemapping()) { onClose(); onRemap(); }
   };
 
-  const handleRestartGame = () => {
-    const confirmed = window.confirm('这会删除当前浏览器中的全部本地存档、教程进度与调试状态，并立即重新开始游戏。此操作无法撤销，是否继续？');
-    if (!confirmed) return;
-
+  const performRestartGame = () => {
     useGameStore.persist.clearStorage();
     RESET_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
     for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
@@ -44,7 +44,9 @@ export function SettingsPanel({
       }
     }
     window.sessionStorage.removeItem('dou_force_midnight');
-    window.location.reload();
+    restartGame();
+    setConfirmRestart(false);
+    onClose();
   };
 
   return (
@@ -78,10 +80,24 @@ export function SettingsPanel({
         <p className="settings-dev-copy">
           删除当前浏览器中的全部本地存档、教程进度与调试状态，并从全新开局重新开始游戏。
         </p>
-        <button className="btn-secondary settings-dev-reset" type="button" onClick={handleRestartGame}>
+        <button className="btn-secondary settings-dev-reset" type="button" onClick={() => setConfirmRestart(true)}>
           重新开始游戏
         </button>
       </div>
+      <Overlay open={confirmRestart} onClose={() => setConfirmRestart(false)}>
+        <h3 className="panel-title">确认重新开始</h3>
+        <p style={{ textAlign: 'center', lineHeight: 1.7, marginBottom: 16 }}>
+          这会删除当前浏览器中的全部本地存档、教程进度与调试状态，并立即返回初始映射流程。
+        </p>
+        <div className="panel-actions">
+          <button className="btn-primary" type="button" onClick={performRestartGame}>
+            确认清空
+          </button>
+          <button className="btn-secondary" type="button" onClick={() => setConfirmRestart(false)}>
+            取消
+          </button>
+        </div>
+      </Overlay>
     </Overlay>
   );
 }

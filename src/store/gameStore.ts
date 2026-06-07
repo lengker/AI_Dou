@@ -26,6 +26,7 @@ interface GameActions {
   initApp: () => void;
   recordExit: () => void;
   completeMapping: (profile: AvatarProfile) => void;
+  restartGame: () => void;
   setScreen: (screen: GameState['screen']) => void;
   switchRoom: (room: RoomId) => void;
   setPetState: (state: PetState) => void;
@@ -226,23 +227,27 @@ export function applyHiddenName(nickname: string, base: ReturnType<typeof genera
   return { ...base, isHiddenArchitect: false };
 }
 
-const initialState: GameState = {
-  hasCompletedMapping: false, profile: null, shards: 0, collectibles: [], furniture: [],
-  achievements: [], catUnlocked: false, currentRoom: 'room_working', petState: 'S1',
-  missyState: false, missyClicks: 0, lastMissyClickAt: 0, petClickCount: 0, petClickWindowStart: 0,
-  lastExitAt: null, daily: { date: todayKey(), trashSearchCount: 0, randomEventCount: 0, easterEggTriggered: false },
-  tempBuff: {}, pendingOffline: null, showRandomEvent: null, computerSessionEnd: null,
-  screen: 'mapping', returnRoom: null,
-  tutorialCompleted: false, tutorialActive: false, tutorialStep: 0, tutorialReplayMode: false, showWelcomeModal: false,
-  energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
-  discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
-  mainlineStep: 'intro', storyDialog: null,
-  forestAnimals: [],
-  onboardingActive: false,
-  onboardingStep: 0,
-  activeHint: null,
-  completedHints: [],
-};
+function createInitialState(): GameState {
+  return {
+    hasCompletedMapping: false, profile: null, shards: 0, collectibles: [], furniture: [],
+    achievements: [], catUnlocked: false, currentRoom: 'room_working', petState: 'S1',
+    missyState: false, missyClicks: 0, lastMissyClickAt: 0, petClickCount: 0, petClickWindowStart: 0,
+    lastExitAt: null, daily: { date: todayKey(), trashSearchCount: 0, randomEventCount: 0, easterEggTriggered: false },
+    tempBuff: {}, pendingOffline: null, showRandomEvent: null, computerSessionEnd: null,
+    screen: 'mapping', returnRoom: null,
+    tutorialCompleted: false, tutorialActive: false, tutorialStep: 0, tutorialReplayMode: false, showWelcomeModal: false,
+    energy: MAX_ENERGY, maxEnergy: MAX_ENERGY, mood: DEFAULT_MOOD, maxMood: MAX_MOOD,
+    discoveredZones: [], unlockedRooms: ['room_working'], unlockedFeatures: [],
+    mainlineStep: 'intro', storyDialog: null,
+    forestAnimals: [],
+    onboardingActive: false,
+    onboardingStep: 0,
+    activeHint: null,
+    completedHints: [],
+  };
+}
+
+const initialState: GameState = createInitialState();
 
 export const useGameStore = create<GameState & GameActions>()(
   persist(
@@ -326,6 +331,8 @@ export const useGameStore = create<GameState & GameActions>()(
       },
 
       recordExit: () => set({ lastExitAt: Date.now() }),
+
+      restartGame: () => set(createInitialState()),
 
       completeMapping: (profile) => {
         let collectibles = [...get().collectibles];

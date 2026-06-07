@@ -32,9 +32,9 @@ export const HOT_ZONES: HotZone[] = [
 ];
 
 export const ROOM_BACKGROUNDS = {
-  room_working: '/DOU/images/bg/background_working.png',
-  room_living: '/DOU/images/bg/background_living.png',
-  outdoor_forest: '/DOU/images/bg/background_forest.png',
+  room_working: './DOU/images/bg/background_working.png',
+  room_living: './DOU/images/bg/background_living.png',
+  outdoor_forest: './DOU/images/bg/background_forest.png',
 } as const;
 
 export const PET_STAND_POINTS = {

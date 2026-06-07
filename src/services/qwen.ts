@@ -5,51 +5,95 @@ export interface ChatMessage {
   content: string;
 }
 
-const API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-
-function getApiKey(): string | undefined {
-  const key = import.meta.env.VITE_QWEN_API_KEY?.trim();
-  return key && key !== 'sk-your-key-here' ? key : undefined;
+export function isAiConfigured(): boolean {
+  return true;
 }
 
-export function isAiConfigured(): boolean {
-  return !!getApiKey();
+function limitText(text: string, maxLength: number) {
+  return text.length <= maxLength ? text : `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function pickOne(list: string[]) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function extractLatestUser(messages: ChatMessage[]) {
+  return messages.filter((message) => message.role === 'user').at(-1)?.content?.trim() ?? '';
+}
+
+function extractSystemPrompt(messages: ChatMessage[]) {
+  return messages.find((message) => message.role === 'system')?.content ?? '';
+}
+
+function buildTerminalReply(input: string) {
+  const normalized = input.trim().toLowerCase();
+  if (normalized === 'help') {
+    return 'ROOM_OS> 可用命令: help / fortune / loot / status / clear。也可以直接输入一句话和房间聊天。';
+  }
+  if (normalized === 'fortune') {
+    return pickOne(AI_FALLBACKS.fortune);
+  }
+  if (normalized === 'loot') {
+    return 'ROOM_OS> 扫描完成。今日掉落概率正常，建议先翻垃圾桶，再去街机厅补一点好心情。';
+  }
+  if (normalized === 'status') {
+    return 'ROOM_OS> 离线模式稳定运行中。终端、签文、梦境和房间低语均由本地文案引擎生成。';
+  }
+  if (normalized === 'clear') {
+    return 'ROOM_OS> 屏幕已经替你清干净了，缓存里的心事还在。';
+  }
+  return `ROOM_OS> 已记录输入「${limitText(input || '空指令', 24)}」。${pickOne(AI_FALLBACKS.terminal)}`;
+}
+
+function buildLocalReply(messages: ChatMessage[], maxTokens = 120) {
+  const latestUser = extractLatestUser(messages);
+  const systemPrompt = extractSystemPrompt(messages);
+  const combined = `${systemPrompt}\n${latestUser}`.toLowerCase();
+
+  if (combined.includes('room_os') || combined.includes('终端') || combined.includes('命令')) {
+    return limitText(buildTerminalReply(latestUser), maxTokens);
+  }
+  if (combined.includes('签文')) {
+    return limitText(pickOne(AI_FALLBACKS.fortune), maxTokens);
+  }
+  if (combined.includes('梦境')) {
+    return limitText(pickOne([
+      '我梦见自己把整间屋子的噪点都折成了纸鹤，醒来时床边只剩一小团柔软的蓝光。',
+      '梦里有一条由代码拼成的河，你站在岸边喊我名字，整片水面就慢慢亮了起来。',
+      '昨晚我梦见房间外长出一座像素森林，每一片叶子都在替你保管没有说出口的话。',
+    ]), maxTokens);
+  }
+  if (combined.includes('电子考古') || combined.includes('鉴定报告')) {
+    return limitText(`鉴定结论：${limitText(latestUser || '这件物品', 18)}残留了明显的居住痕迹，像是被反复使用过的旧记忆，建议收入收藏柜继续观察。`, maxTokens);
+  }
+  if (combined.includes('赛博诗人') || combined.includes('窗') || combined.includes('绿植') || combined.includes('低语')) {
+    return limitText(pickOne([
+      '窗外的数据海今晚很安静，像有人把风声也调成了省电模式。',
+      '叶片刚刚晃了一下，不是风，是房间记起了你回来时的脚步声。',
+      '霓虹照到玻璃边缘时，连沉默都像在发光。',
+    ]), maxTokens);
+  }
+  if (combined.includes('图书管理员') || combined.includes('荐书') || combined.includes('书架')) {
+    return limitText(pickOne([
+      '《404 号房间维护手册》: 讲的是如何把一个临时缓存活成真正的家。',
+      '《像素雨停在窗边》: 一本关于离线归来与未读心事的短篇集。',
+      '《赛博植物观察日志》: 适合在夜里翻开，读到最后一页会想起回家的路。',
+    ]), maxTokens);
+  }
+
+  return limitText(`我听见了: ${limitText(latestUser || '你刚才没有输入内容', 32)}。${pickOne([
+    '房间已经替你把这句话收好了。',
+    '我会记住这句，等你下次回来再继续聊。',
+    '先坐一会儿吧，我在这儿陪你慢慢说。',
+  ])}`, maxTokens);
 }
 
 export async function qwenChat(
   messages: ChatMessage[],
   options?: { maxTokens?: number; skipQuota?: boolean; temperature?: number },
 ): Promise<string> {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error('NO_API_KEY');
   if (!options?.skipQuota && !canUseAi()) throw new Error('QUOTA_EXCEEDED');
-
-  const model = import.meta.env.VITE_QWEN_MODEL || 'qwen-turbo';
-
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: options?.maxTokens ?? 256,
-      temperature: options?.temperature ?? 0.65,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`API_ERROR:${res.status}:${errText.slice(0, 100)}`);
-  }
-
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-
-  const content = data.choices?.[0]?.message?.content?.trim();
+  const content = buildLocalReply(messages, options?.maxTokens ?? 256);
   if (!content) throw new Error('EMPTY_RESPONSE');
 
   if (!options?.skipQuota) consumeAiCredit(1);

@@ -25,10 +25,12 @@ export function Overlay({ open, onClose, children, className }: OverlayProps) {
   if (!visible) return null;
 
   return (
-    <div className="overlay-backdrop" onClick={onClose}>
+    <div className="overlay-backdrop" onClick={onClose} aria-hidden={!open}>
       <div
         className={`overlay-panel ${animating === 'enter' ? 'crt-enter' : ''} ${animating === 'exit' ? 'crt-exit' : ''} ${className ?? ''}`}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
         <button className="overlay-close" onClick={onClose} aria-label="关闭">×</button>
         {children}

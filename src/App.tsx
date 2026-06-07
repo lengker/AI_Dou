@@ -25,7 +25,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <div className={`game-viewport ${screen === 'room' ? 'room-mode' : ''} ${screen === 'arcade' ? 'arcade-mode' : ''}`}>
+      <div className={`game-viewport ${screen === 'mapping' ? 'mapping-mode' : ''} ${screen === 'room' ? 'room-mode' : ''} ${screen === 'arcade' ? 'arcade-mode' : ''}`}>
         {screen === 'mapping' && <MappingScreen />}
         {screen === 'room' && <RoomScreen />}
         {screen === 'arcade' && <ArcadeScreen />}

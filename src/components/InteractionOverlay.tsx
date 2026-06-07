@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCollectible } from '@/data/collectibles';
 import { FOREST_ANIMAL_BY_ZONE, type ForestAnimalDef } from '@/data/forestAnimals';
 import { getFurniture } from '@/data/furniture';
@@ -52,7 +52,7 @@ export function InteractionOverlay({
       <Overlay open onClose={onClose} className="computer-overlay-panel">
         <h3 className="panel-title">404 神经终端</h3>
         <img
-          src={nightDebug || payload.nightDebug ? '/DOU/images/interact/computer_simple.png' : '/DOU/images/interact/computer.png'}
+          src={nightDebug || payload.nightDebug ? './DOU/images/interact/computer_simple.png' : './DOU/images/interact/computer.png'}
           alt="computer"
           className="overlay-image overlay-image-sm"
         />
@@ -66,7 +66,7 @@ export function InteractionOverlay({
           nightDebug={!!(nightDebug || payload.nightDebug)}
           onLoot={onLoot}
         />
-        <p className="ai-hint">小人同步敲键盘中 · 终端由千问驱动</p>
+        <p className="ai-hint">小人同步敲键盘中 · 终端由离线文案引擎驱动</p>
       </Overlay>
     );
   }
@@ -122,7 +122,7 @@ function FridgeOverlay({ onClose, profile, result, zoneId }: { onClose: () => vo
       <h3 className="panel-title">{zoneId === 'F03' ? '清泉取水' : '冰箱 · 赛博签'}</h3>
       {result === 'cola' && (
         <>
-          <img src="/DOU/images/element/cola.png" alt="cola" className="overlay-image" />
+          <img src="./DOU/images/element/cola.png" alt="cola" className="overlay-image" />
           <p style={{ textAlign: 'center' }}>赛博可乐！移速 ×1.3</p>
           {isWeekend() && <p style={{ textAlign: 'center', color: '#ff9966', fontSize: 12 }}>周末多巴胺溢出</p>}
         </>
@@ -243,6 +243,8 @@ function ForestEventOverlay({
   const [hint, setHint] = useState('');
   const [timingValue, setTimingValue] = useState(0);
   const [timingDirection, setTimingDirection] = useState(1);
+  const holdIntervalRef = useRef<number | null>(null);
+  const holdActiveRef = useRef(false);
 
   useEffect(() => {
     if (!animal || animal.method !== 'timing' || alreadyUnlocked || status === 'success') return;
@@ -272,6 +274,31 @@ function ForestEventOverlay({
     setStatus('success');
   };
 
+  const stopHold = useCallback(() => {
+    holdActiveRef.current = false;
+    if (holdIntervalRef.current !== null) {
+      window.clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+  }, []);
+
+  const startHold = useCallback(() => {
+    if (holdActiveRef.current || alreadyUnlocked || status === 'success') return;
+    holdActiveRef.current = true;
+    holdIntervalRef.current = window.setInterval(() => {
+      setHoldCount((prev) => {
+        const next = Math.min(100, prev + 10);
+        if (next >= 100) {
+          stopHold();
+          finishUnlock();
+        }
+        return next;
+      });
+    }, 90);
+  }, [alreadyUnlocked, status, stopHold]);
+
+  useEffect(() => stopHold, [stopHold]);
+
   const renderGame = (config: ForestAnimalDef) => {
     switch (config.method) {
       case 'tap':
@@ -292,20 +319,17 @@ function ForestEventOverlay({
             <button
               type="button"
               className="btn-primary forest-mini-btn"
-              onMouseDown={() => {
-                const iv = setInterval(() => {
-                  setHoldCount((prev) => {
-                    const next = Math.min(100, prev + 10);
-                    if (next >= 100) {
-                      clearInterval(iv);
-                      finishUnlock();
-                    }
-                    return next;
-                  });
-                }, 90);
-                const stop = () => { clearInterval(iv); window.removeEventListener('mouseup', stop); };
-                window.addEventListener('mouseup', stop);
-              }}
+              onPointerDown={startHold}
+              onPointerUp={stopHold}
+              onPointerCancel={stopHold}
+              onPointerLeave={stopHold}
+              onTouchStart={startHold}
+              onTouchEnd={stopHold}
+              onTouchCancel={stopHold}
+              onMouseDown={startHold}
+              onMouseUp={stopHold}
+              onMouseLeave={stopHold}
+              onContextMenu={(e) => e.preventDefault()}
             >
               按住屏息等待
             </button>

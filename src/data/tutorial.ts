@@ -75,7 +75,7 @@ export const GUIDE_SECTIONS = [
     { name: '异常图片', desc: '单色/杂乱图触发异常映射，得 C011' },
     { name: '偷偷养的小猫', desc: '短期离线 15% 概率解锁，常驻脚边' },
   ]},
-  { title: '⚡ AI 神经功能（千问）', items: [
+  { title: '⚡ AI 神经功能（离线模式）', items: [
     { name: '神经链接 ⚡', desc: '左上角闪电按钮，与分身自由对话，记得你的人设' },
     { name: '404 终端', desc: '点击电脑打开 ROOM_OS，输入 help/fortune/loot/自由对话' },
     { name: '冰箱赛博签', desc: '开冰箱后 AI 生成今日签文' },
@@ -83,6 +83,6 @@ export const GUIDE_SECTIONS = [
     { name: '电子考古', desc: '垃圾桶出藏品时生成鉴定报告' },
     { name: '窗外/绿植低语', desc: '点击窗户或绿植，AI 生成诗意台词' },
     { name: '书架荐书', desc: '解锁书架后点击，AI 推荐赛博书籍' },
-    { name: '每日 AI 40 次', desc: '右上角数字为今日剩余 AI 调用次数' },
+    { name: '每日 AI 40 次', desc: '右上角数字为今日剩余本地文案调用次数' },
   ]},
 ];

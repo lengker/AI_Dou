@@ -635,13 +635,13 @@ export function RoomScreen() {
           onPointerCancel={(event) => finishPetPointer(event, false)}
         >
           <div className={`pet-sprite ${petState === 'S5' ? 'glitching' : ''} ${petJumping ? 'pet-jumping' : ''}`}>
-            <img src="/DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
+            <img src="./DOU/images/role/default.png" alt="pet" style={{ width: '100%', height: '100%',
               filter: profile ? `${getSkinFilter(profile.appearance.skinTone)} ${getHairFilter(profile.appearance.hairColor)}` : undefined }} />
-            {missyState && <img src="/DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
+            {missyState && <img src="./DOU/images/ui/pensive.png" alt="face" className="pet-face" />}
             {showSleepBadge && <span className="pet-state-badge">{forcedSleepActive ? '休息中' : '低光调试'}</span>}
-            {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="/DOU/images/ui/heart.png" alt="heart" />)}</div>}
+            {missyState && <div className="pet-hearts">{[0,1,2].map((i) => <img key={i} src="./DOU/images/ui/heart.png" alt="heart" />)}</div>}
           </div>
-          {catUnlocked && <img src="/DOU/images/pet/cat.png" alt="cat" className="pet-cat" />}
+          {catUnlocked && <img src="./DOU/images/pet/cat.png" alt="cat" className="pet-cat" />}
           {!completedHintSet.has('pet') && <span className="hint-badge hint-badge-pet">点我</span>}
         </div>
 
@@ -693,12 +693,12 @@ export function RoomScreen() {
           </button>
         )}
         <div className="shard-display">
-          <img src="/DOU/images/ui/coin.png" alt="coin" /><span>{shards}</span>
+          <img src="./DOU/images/ui/coin.png" alt="coin" /><span>{shards}</span>
           {aiOn && <span className="ai-badge">{getAiRemaining()}</span>}
         </div>
         <button className="ui-icon-btn ui-settings" onClick={() => { if (debounceAction('settings', 500)) setShowSettings(true); }} aria-label="设置">⚙</button>
         <div className="ui-folder-wrap">
-          <img src="/DOU/images/ui/folder.png" alt="收藏柜" className="ui-icon-btn ui-folder"
+          <img src="./DOU/images/ui/folder.png" alt="收藏柜" className="ui-icon-btn ui-folder"
             style={{ opacity: unlockedFeatures.includes('collection') ? 1 : 0.45 }}
             onClick={() => {
               if (!debounceAction('collection', 500)) return;
